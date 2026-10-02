@@ -143,6 +143,8 @@ export class CharacterVisual {
       }
     }
     if (r.head) r.head.rotation.set(0, 0, 0);
+    if (r.hat) r.hat.position.y = 0.2;
+    if (r.crown) r.crown.rotation.set(0, 0, 0);
     if (r.tail) r.tail.rotation.set(0, Math.sin(this.t * 6) * 0.3, 0);
     if (r.cape) r.cape.rotation.set(0, 0, 0);
     if (r.spinPart) r.spinPart.rotation.set(Math.PI / 2, 0, 0);

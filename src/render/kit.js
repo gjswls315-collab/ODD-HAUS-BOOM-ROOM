@@ -10,7 +10,7 @@ function gkey(...a) {
   return a.map((v) => (typeof v === 'number' ? v.toFixed(3) : String(v))).join('|');
 }
 
-export function rbox(w, h, d, r = 0.06, seg = 3) {
+export function rbox(w, h, d, r = 0.06, seg = 2) {
   const k = gkey('rbox', w, h, d, r, seg);
   if (!geoCache.has(k)) geoCache.set(k, new RoundedBoxGeometry(w, h, d, seg, Math.min(r, w / 2, h / 2, d / 2)));
   return geoCache.get(k);
@@ -28,7 +28,7 @@ export function cyl(rt, rb, h, seg = 24, open = false) {
   return geoCache.get(k);
 }
 
-export function sphere(r, ws = 20, hs = 14, phiStart = 0, phiLen = Math.PI * 2, thetaStart = 0, thetaLen = Math.PI) {
+export function sphere(r, ws = 16, hs = 12, phiStart = 0, phiLen = Math.PI * 2, thetaStart = 0, thetaLen = Math.PI) {
   const k = gkey('sph', r, ws, hs, phiStart, phiLen, thetaStart, thetaLen);
   if (!geoCache.has(k)) geoCache.set(k, new THREE.SphereGeometry(r, ws, hs, phiStart, phiLen, thetaStart, thetaLen));
   return geoCache.get(k);

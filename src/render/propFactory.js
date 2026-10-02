@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { rbox, box, cyl, sphere, torus, cone, capsule, plane, mat, basic, mesh, group } from './kit.js';
 import { grooveTexture, spinesTexture, labelTexture, glowTexture } from './textures.js';
 
@@ -68,13 +69,15 @@ const BUILDERS = {
 
   lpBox({ seed }) {
     const g = group();
-    g.add(mesh(rbox(0.76, 0.5, 0.68, 0.04), mat(CARD, { rough: 0.95 }), { p: [0, 0.25, 0] }));
-    g.add(mesh(box(0.78, 0.06, 0.12), mat('#a37a45'), { p: [0, 0.5, 0] }));
+    g.add(mesh(rbox(0.78, 0.44, 0.7, 0.04), mat(CARD, { rough: 0.95 }), { p: [0, 0.22, 0] }));
+    // 열린 뚜껑 날개
+    g.add(mesh(box(0.78, 0.02, 0.2), mat('#b8895a', { rough: 0.95 }), { p: [0, 0.47, 0.42], r: [0.9, 0, 0] }));
+    g.add(mesh(box(0.78, 0.02, 0.2), mat('#b8895a', { rough: 0.95 }), { p: [0, 0.47, -0.42], r: [-0.9, 0, 0] }));
     const cols = ['#d94b3d', '#3d8bd9', '#f2c14e', '#2fa37c', '#ececec', '#9a66ff'];
-    for (let i = 0; i < 4; i++) {
-      g.add(mesh(box(0.62, 0.62, 0.025), mat(cols[(seed + i * 2) % cols.length], { rough: 0.6 }), { p: [0.02 * (i - 1.5), 0.48, -0.18 + i * 0.11], r: [0.05 * (i - 1.5), 0, 0] }));
+    for (let i = 0; i < 5; i++) {
+      g.add(mesh(box(0.6, 0.5, 0.025), mat(cols[(seed + i * 2) % cols.length], { rough: 0.6 }), { p: [0, 0.32 + ((seed + i) % 3) * 0.025, -0.24 + i * 0.12], r: [0.08 * (i - 2), 0, 0] }));
     }
-    g.add(mesh(plane(0.34, 0.16), mat('#fff', { map: labelTexture('LP', { color: '#2a1a10', bg: '#efe2c4', font: 'bold 90px sans-serif', w: 256, h: 128 }) }), { p: [0, 0.27, 0.341], cast: false }));
+    g.add(mesh(plane(0.36, 0.17), mat('#fff', { map: labelTexture('LP', { color: '#2a1a10', bg: '#efe2c4', font: 'bold 90px sans-serif', w: 256, h: 128 }) }), { p: [0, 0.24, 0.352], cast: false }));
     return g;
   },
 
@@ -82,8 +85,8 @@ const BUILDERS = {
     const g = group();
     const cols = ['#b83a3a', '#2f5d8c', '#d9a441', '#2f7a5a', '#6d3f8c', '#e0d6c2'];
     let y = 0;
-    for (let i = 0; i < 5; i++) {
-      const h = 0.09 + ((seed + i) % 3) * 0.02;
+    for (let i = 0; i < 4; i++) {
+      const h = 0.1 + ((seed + i) % 3) * 0.02;
       g.add(mesh(rbox(0.66 - (i % 2) * 0.08, h, 0.5, 0.015), mat(cols[(seed + i) % cols.length], { rough: 0.8 }), { p: [0.03 * Math.sin(seed + i * 2), y + h / 2, 0], r: [0, 0.15 * Math.sin(seed * 3 + i), 0] }));
       g.add(mesh(box(0.6 - (i % 2) * 0.08, h * 0.8, 0.46), mat('#f3ecd8'), { p: [0.03 * Math.sin(seed + i * 2) + 0.04, y + h / 2, 0], r: [0, 0.15 * Math.sin(seed * 3 + i), 0], cast: false }));
       y += h;
@@ -134,7 +137,9 @@ const BUILDERS = {
       g.add(mesh(box(W - 0.1, 0.28, 0.02), spines, { p: [0, 0.2 + r * 0.33, D / 2 + 0.005], cast: false }));
       g.add(mesh(box(W - 0.06, 0.035, D), mat('#5a3620'), { p: [0, 0.05 + r * 0.33, 0.01] }));
     }
-    g.add(mesh(box(W + 0.04, 0.05, D + 0.04), mat('#5a3620'), { p: [0, H, 0] }));
+    g.add(mesh(box(W + 0.04, 0.05, D + 0.04), mat('#8a5a34', { rough: 0.5 }), { p: [0, H, 0] }));
+    // 위에 눕혀 놓은 LP 몇 장 (위에서 볼 때 선반임을 알 수 있게)
+    g.add(mesh(box(W * 0.6, 0.04, D * 0.7), mat(['#d94b3d', '#3d8bd9', '#f2c14e'][seed % 3], { rough: 0.6 }), { p: [0.05, H + 0.045, 0], r: [0, 0.2, 0] }));
     return g;
   },
 
@@ -251,10 +256,11 @@ const BUILDERS = {
     const g = group();
     g.add(mesh(rbox(2.92, 0.08, 2.92, 0.06), mat('#1a1a20', { rough: 0.45, metal: 0.3 }), { p: [0, 0.04, 0], cast: false }));
     const platter = group([], { name: 'platter' });
-    platter.add(mesh(cyl(1.38, 1.38, 0.05, 64), [mat('#2a2a30', { metal: 0.6 }), mat('#fff', { map: grooveTexture('#b46bff', 512), rough: 0.3 }), mat('#111')], { p: [0, 0.105, 0], cast: false }));
-    for (let i = 0; i < 12; i++) {
-      const a = (i / 12) * Math.PI * 2;
-      platter.add(mesh(box(0.05, 0.012, 0.05), basic('#b46bff', { toneMapped: false }), { p: [Math.cos(a) * 1.42, 0.09, Math.sin(a) * 1.42], cast: false }));
+    platter.add(mesh(cyl(1.4, 1.4, 0.05, 64), [mat('#8a8a96', { metal: 0.8, rough: 0.25 }), mat('#fff', { map: grooveTexture('#b46bff', 512), rough: 0.25, emissive: '#2a1440', ei: 0.6 }), mat('#111')], { p: [0, 0.105, 0], cast: false }));
+    platter.add(mesh(torus(1.42, 0.025, 6, 64), basic('#d6a8ff', { toneMapped: false }), { p: [0, 0.12, 0], r: [Math.PI / 2, 0, 0], cast: false }));
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2;
+      platter.add(mesh(box(0.07, 0.015, 0.07), basic(i % 2 ? '#4fb8ff' : '#b46bff', { toneMapped: false }), { p: [Math.cos(a) * 1.46, 0.09, Math.sin(a) * 1.46], cast: false }));
     }
     g.add(platter);
     g.add(mesh(cyl(0.3, 0.34, 0.42, 24), mat('#24242c', { metal: 0.6, rough: 0.3 }), { p: [0, 0.31, 0] }));
@@ -427,8 +433,43 @@ const BUILDERS = {
 export function buildProp(kind, ctx) {
   const fn = BUILDERS[kind] || BUILDERS.box;
   const g = fn({ w: 1, d: 1, face: { x: 0, z: 1 }, theme: {}, seed: 0, ...ctx });
+  if (ctx.merge !== false) mergeStatic(g);
   g.userData.prop = kind;
   return g;
+}
+
+// 정적 메쉬를 머티리얼별로 병합해 드로우콜 감소 (이름 있는 애니메이션 파트는 유지)
+function mergeStatic(root) {
+  root.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
+  const buckets = new Map();
+  const victims = [];
+  root.traverse((o) => {
+    if (!o.isMesh || Array.isArray(o.material) || o.material.transparent) return;
+    let p = o;
+    while (p && p !== root) {
+      if (p.name) return;
+      p = p.parent;
+    }
+    const key = `${o.material.uuid}|${o.castShadow ? 1 : 0}`;
+    const geo = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+    for (const k of Object.keys(geo.attributes)) if (!['position', 'normal', 'uv'].includes(k)) geo.deleteAttribute(k);
+    if (!geo.attributes.uv) return;
+    geo.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld));
+    if (!buckets.has(key)) buckets.set(key, { mat: o.material, cast: o.castShadow, geos: [] });
+    buckets.get(key).geos.push(geo);
+    victims.push(o);
+  });
+  if (victims.length < 3) return;
+  for (const v of victims) v.removeFromParent();
+  for (const b of buckets.values()) {
+    const merged = mergeGeometries(b.geos, false);
+    if (!merged) continue;
+    const m = new THREE.Mesh(merged, b.mat);
+    m.castShadow = b.cast;
+    m.receiveShadow = true;
+    root.add(m);
+  }
 }
 
 export const PROP_KINDS = Object.keys(BUILDERS);
