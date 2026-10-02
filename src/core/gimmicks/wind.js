@@ -27,7 +27,7 @@ export class Wind {
       if (this.t >= cfg.warnTime) {
         this.gust();
         this.phase = 'idle';
-        this.nextAt = gm.matchTime + cfg.interval;
+        this.nextAt = gm.matchTime + gm.tempoInterval(cfg.interval);
       }
     }
   }

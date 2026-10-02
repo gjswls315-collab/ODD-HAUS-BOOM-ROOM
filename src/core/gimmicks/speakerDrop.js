@@ -30,7 +30,7 @@ export class SpeakerDrop {
       if (this.t >= cfg.duration) {
         this.phase = 'idle';
         gm.bombs.fuseRate = 1;
-        this.nextAt = gm.matchTime + cfg.interval;
+        this.nextAt = gm.matchTime + gm.tempoInterval(cfg.interval);
         gm.emit('speakerDropEnd', {});
       }
     }

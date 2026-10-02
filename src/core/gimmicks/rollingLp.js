@@ -53,7 +53,7 @@ export class RollingLp {
 
   _end() {
     this.phase = 'idle';
-    this.nextAt = this.gm.matchTime + this.cfg.interval;
+    this.nextAt = this.gm.matchTime + this.gm.tempoInterval(this.cfg.interval);
     this.gm.emit('rollingLpEnd', { lane: this.lane, x: this.lastCell });
   }
 

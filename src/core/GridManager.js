@@ -108,7 +108,6 @@ export class GridManager {
   // 안쪽 # 덩어리 → 가구 prop (소파 / 선반 / 캐비닛 ...)
   _assignInteriorSolids(cfg) {
     const byLength = cfg.byLength || {};
-    const rowCounters = {};
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {
         const cell = this.get(x, y);
@@ -117,8 +116,10 @@ export class GridManager {
         const touchesBorder = members.some((c) => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => this.get(c.x + dx, c.y + dy)?.border));
         let spec = touchesBorder && cfg.borderAttached ? cfg.borderAttached : byLength[members.length] ?? byLength.default ?? 'cabinet';
         if (Array.isArray(spec)) {
-          const k = (rowCounters[y] = (rowCounters[y] ?? -1) + 1);
-          spec = spec[k % spec.length];
+          // 좌우·상하 대칭 위치에는 같은 가구가 오도록 테두리로부터의 거리로 고른다
+          const ax = Math.min(...members.map((c) => Math.min(c.x, this.width - 1 - c.x)));
+          const ay = Math.min(...members.map((c) => Math.min(c.y, this.height - 1 - c.y)));
+          spec = spec[(Math.floor(ax / 2) * 3 + Math.floor(ay / 2) * 5 + ax + ay) % spec.length];
         }
         if (typeof spec === 'string') spec = { prop: spec, movable: false };
         for (const c of members) {

@@ -108,9 +108,10 @@ export const RANDOM_BOX_POOL = {
 
 // BREAKABLE 오브젝트 파괴 시 드랍 테이블
 // 권장 초기 비율: Speed 30% · Bomb 30% · Wave 30% · Special 10%
+// v4: BREAKABLE 약 55개 × 드랍 60~70% → 한 판 아이템 약 30~40개 (모두가 MAX 까지 가지는 못한다)
 export const DROP_TABLES = {
   standard: {
-    dropChance: 0.55,
+    dropChance: 0.65,
     weights: {
       speedUp: 30,
       bombUp: 30,

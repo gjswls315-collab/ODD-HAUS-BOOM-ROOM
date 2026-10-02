@@ -59,7 +59,7 @@ export class RecPulse {
         for (const l of this.lines) gm.waves.emitLine(l.src.x, l.src.y, l.dir, cfg.range, 'amp');
         this.phase = 'idle';
         this.lines = [];
-        this.nextAt = gm.matchTime + cfg.interval;
+        this.nextAt = gm.matchTime + gm.tempoInterval(cfg.interval);
         gm.emit('recOff', {});
       }
     }

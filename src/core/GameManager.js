@@ -43,7 +43,9 @@ export class GameManager {
     this.players = new PlayerManager(this, setup.players);
     this.bombs = new BeatBombManager(this);
     this.waves = new SoundWaveManager(this);
-    this.items = new ItemManager(this, DROP_TABLES[setup.dropTable || 'standard']);
+    const dropTable = DROP_TABLES[setup.dropTable || 'standard'];
+    const stageDrop = !setup.dropTable && this.stageDef.dropChance !== undefined ? { dropChance: this.stageDef.dropChance } : {};
+    this.items = new ItemManager(this, { ...dropTable, ...stageDrop });
     this.stage = new StageManager(this, this.stageDef);
     this.house = new HouseEventManager(this, setup.houseEvents === false ? null : this.stageDef.houseEvents);
 
@@ -61,6 +63,19 @@ export class GameManager {
 
   get timeLeft() {
     return Math.max(0, this.timeLimit - this.matchTime);
+  }
+
+  // 경기 템포: 'early'(파밍) → 'mid'(교전) → 'late'(혼란)
+  get tempo() {
+    const t = GAME_CONFIG.tempo;
+    if (this.matchTime < t.earlyUntil) return 'early';
+    if (this.matchTime >= Math.min(t.lateFrom, this.timeLimit * 0.7)) return 'late';
+    return 'mid';
+  }
+
+  // 스테이지 기믹 / House Event 의 다음 발생 간격 (후반에는 짧아진다)
+  tempoInterval(base) {
+    return this.tempo === 'late' ? base * GAME_CONFIG.tempo.lateIntervalScale : base;
   }
 
   emit(type, data = {}) {

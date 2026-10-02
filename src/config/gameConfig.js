@@ -53,9 +53,17 @@ export const GAME_CONFIG = {
 
   match: {
     startCountdown: 3,
-    battleTimeLimit: 180,
-    teamTimeLimit: 180,
+    // v4: 큰 맵 기준 한 판 4~6분 — 초반 파밍 → 중반 교전 → 후반 혼란
+    battleTimeLimit: 300,
+    teamTimeLimit: 300,
     resultDelay: 1.6, // 승패 확정 후 결과 화면까지
+  },
+
+  // 경기 템포 구간 (matchTime 기준). 후반에는 스테이지 기믹 / Mr. ODD 이벤트 간격이 짧아진다
+  tempo: {
+    earlyUntil: 70, // 0~70초: 파밍 위주 (CPU 도 아이템 우선)
+    lateFrom: 200, // 200초~: 후반 혼란
+    lateIntervalScale: 0.65,
   },
 
   items: {
