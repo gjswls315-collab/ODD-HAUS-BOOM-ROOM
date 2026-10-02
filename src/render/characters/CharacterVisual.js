@@ -15,6 +15,7 @@ const glbCache = new Map(); // id → gltf | null
 const loader = new GLTFLoader();
 
 async function glbExists(url) {
+  if (typeof location !== 'undefined' && location.protocol === 'file:') return false; // 단일 HTML 을 파일로 열면 GLB 확인 생략
   try {
     const r = await fetch(url, { method: 'HEAD' });
     if (!r.ok) return false;

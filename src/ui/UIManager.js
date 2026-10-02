@@ -119,7 +119,7 @@ export class UIManager {
   }
 
   // ── TITLE ──────────────────────────────────────
-  showTitle({ onMode, onHowTo }) {
+  showTitle({ onMode, onHowTo, onWatch }) {
     this.clearAll();
     const modeBtns = ['item', 'houseEvent', 'coop', 'custom'].map((m) => `<button class="btn disabled" data-soon="${m}">${MODES[m].name}<span class="soon">SOON</span></button>`).join('');
     const node = this._layer(
@@ -133,9 +133,10 @@ export class UIManager {
             <button class="btn" data-go="battle">BATTLE MODE<small>2~4인 개인전 · 마지막까지 살아남기</small></button>
             <button class="btn" data-go="team">TEAM MODE<small>2 VS 2 · 갇힌 팀원을 구출</small></button>
             <button class="btn" data-go="howto">HOW TO PLAY<small>조작법 · 규칙 · 아이템</small></button>
+            <button class="btn" data-go="watch">WATCH CPU MATCH<small>CPU 4명 관전 · 키보드 없이 구경하기</small></button>
             <div class="menu-row">${modeBtns}</div>
           </div>
-          <div class="title-footer">SPACE / ENTER 선택 · M 음소거 · 모든 캐릭터 동일 조작 — 차이는 SPEED · BOMB · WAVE 성장치</div>
+          <div class="title-footer">SPACE / ENTER 또는 클릭·탭으로 선택 · M 음소거 · 모든 캐릭터 동일 조작 — 차이는 SPEED · BOMB · WAVE 성장치</div>
         </div>
         <div class="title-right">
           <div class="core-card"><h4>핵심 규칙 — Simple Rules. Different Stats. Same Chaos.</h4>
@@ -153,6 +154,7 @@ export class UIManager {
         this.audio.sfx('confirm');
         const go = b.dataset.go;
         if (go === 'howto') onHowTo();
+        else if (go === 'watch') onWatch();
         else onMode(go);
       }),
     );
@@ -447,7 +449,7 @@ export class UIManager {
       'hud',
       el(`<div class="screen hud passthrough">
         <div class="hud-top"><div class="hud-side left"></div><div class="timer"><b>03:00</b><small>${gm.stageDef.name}</small></div><div class="hud-side right"></div></div>
-        ${showControls ? `<div class="hud-controls"><span class="key">${hudMoveLabel(gm)}</span>이동 <span class="key">SPACE</span>Beat Bomb <span class="key">SHIFT</span>Dash <span class="key">E</span>Item <span class="key">ESC</span>Pause</div>` : ''}
+        ${showControls && gm.players.list.some((p) => !p.isBot) ? `<div class="hud-controls"><span class="key">${hudMoveLabel(gm)}</span>이동 <span class="key">SPACE</span>Beat Bomb <span class="key">SHIFT</span>Dash <span class="key">E</span>Item <span class="key">ESC</span>Pause</div>` : ''}
       </div>`),
     );
     const left = node.querySelector('.hud-side.left');
@@ -463,6 +465,64 @@ export class UIManager {
       return { el: c, key: '' };
     });
     this.hud = { node, cards, timer: node.querySelector('.timer'), timerB: node.querySelector('.timer b'), controls: node.querySelector('.hud-controls'), born: performance.now() };
+    if (isTouchDevice() && gm.players.list.some((p) => !p.isBot)) this._touchControls(node);
+    else if (isTouchDevice()) this._touchPause(node);
+  }
+
+  // 터치 조작 — P1 키 프로필과 같은 코드로 입력 (캐릭터 전용 버튼 없음)
+  _touchControls(node) {
+    const pad = el(`<div class="touch">
+      <div class="dpad">
+        <button data-k="KeyW" class="up" aria-label="위">▲</button>
+        <button data-k="KeyA" class="left" aria-label="왼쪽">◀</button>
+        <button data-k="KeyD" class="right" aria-label="오른쪽">▶</button>
+        <button data-k="KeyS" class="down" aria-label="아래">▼</button>
+      </div>
+      <div class="acts">
+        <button data-k="KeyE" class="item">ITEM</button>
+        <button data-k="ShiftLeft" class="dash">DASH</button>
+        <button data-k="Space" class="bomb">BOMB</button>
+      </div>
+      <button data-k="Escape" class="tpause" aria-label="일시정지">II</button>
+    </div>`);
+    for (const b of pad.querySelectorAll('button')) {
+      const code = b.dataset.k;
+      const down = (e) => {
+        e.preventDefault();
+        try {
+          b.setPointerCapture?.(e.pointerId);
+        } catch {
+          /* 일부 브라우저: 캡처 불가 — 무시 */
+        }
+        b.classList.add('on');
+        this.input.virtualKey(code, true);
+      };
+      const up = (e) => {
+        e.preventDefault();
+        b.classList.remove('on');
+        this.input.virtualKey(code, false);
+      };
+      b.addEventListener('pointerdown', down);
+      b.addEventListener('pointerup', up);
+      b.addEventListener('pointercancel', up);
+      b.addEventListener('lostpointercapture', up);
+      b.addEventListener('contextmenu', (e) => e.preventDefault());
+    }
+    node.appendChild(pad);
+    this.hud.controls?.remove();
+    this.hud.controls = null;
+  }
+
+  _touchPause(node) {
+    const b = el('<div class="touch"><button data-k="Escape" class="tpause" aria-label="일시정지">II</button></div>');
+    b.querySelector('button').addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      this.input.virtualKey('Escape', true);
+      this.input.virtualKey('Escape', false);
+    });
+    node.appendChild(b);
+    this.hud.controls?.remove();
+    this.hud.controls = null;
   }
 
   updateHud(gm) {
@@ -576,6 +636,10 @@ export class UIManager {
     btns.forEach((b) => b.addEventListener('click', () => map[b.dataset.a]()));
     this._menuNav(btns, { cols: 3 });
   }
+}
+
+function isTouchDevice() {
+  return window.matchMedia?.('(pointer: coarse)').matches || 'ontouchstart' in window;
 }
 
 function navAction(code) {

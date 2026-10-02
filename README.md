@@ -15,7 +15,11 @@ npm install
 npm run dev        # http://localhost:5173
 npm test           # 코어 시뮬레이션 단위 테스트 (vitest)
 npm run build      # dist/ (정적 배포 가능, base: './')
+npm run build:single   # dist/boom-room-single.html — JS·CSS 를 한 파일에 묶은 버전 (더블클릭으로 열기)
 ```
+
+- 타이틀의 **WATCH CPU MATCH** 로 키보드 없이 CPU 4명 경기를 관전할 수 있습니다.
+- 터치 기기(휴대폰·태블릿)에서는 화면에 D-pad / BOMB / DASH / ITEM / 일시정지 버튼이 나타납니다 (P1 과 같은 입력 경로). 휴대폰은 가로 화면을 권장합니다.
 
 빠른 시작(개발/테스트용 URL 파라미터):
 

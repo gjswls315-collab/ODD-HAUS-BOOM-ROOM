@@ -51,6 +51,7 @@ export class GameRenderer {
     this.t = 0;
     this.gm = null;
     this.hudTopPx = 96;
+    this.bottomPx = 0;
 
     this.hemi = new THREE.HemisphereLight('#9db6e0', '#3a2414', 0.55);
     this.ambient = new THREE.AmbientLight('#ffffff', 0.12);
@@ -108,10 +109,11 @@ export class GameRenderer {
 
   toWorld = (x, y) => ({ x: x - (this.W - 1) / 2, z: y - (this.H - 1) / 2 });
 
-  setMatch(gm, { hudTopPx = 96 } = {}) {
+  setMatch(gm, { hudTopPx = 96, bottomPx = 0 } = {}) {
     this.clearMatch();
     this.gm = gm;
     this.hudTopPx = hudTopPx;
+    this.bottomPx = bottomPx;
     this.W = gm.grid.width;
     this.H = gm.grid.height;
     const th = gm.stageDef.theme;
@@ -159,32 +161,52 @@ export class GameRenderer {
 
   // 아레나 전체가 화면에 들어오는 거리 계산
   _fitCamera() {
+    const el = this.renderer.domElement;
+    const hpx = el.clientHeight || window.innerHeight || 720;
+    const wpx = el.clientWidth || window.innerWidth || 1280;
     const W = this.W - 0.4;
     const H = this.H - 0.6;
     const pts = [];
     for (const x of [-W / 2, W / 2]) for (const z of [-H / 2, H / 2]) for (const y of [0, 0.8]) pts.push(new THREE.Vector3(x, y, z));
     const target = new THREE.Vector3(0, 0, 0.45);
-    const hudFrac = Math.min(0.3, this.hudTopPx / (this.renderer.domElement.clientHeight || 720));
-    let lo = 5;
-    let hi = 80;
-    for (let i = 0; i < 28; i++) {
-      const d = (lo + hi) / 2;
+    // HUD(위) / 터치 버튼(아래)을 피한 영역에 아레나를 맞춘다
+    const topLim = 1 - 2 * Math.min(0.35, this.hudTopPx / hpx) - 0.02;
+    const botLim = -1 + 2 * Math.min(0.35, this.bottomPx / hpx) + 0.02;
+    this.camera.clearViewOffset();
+    const measure = (d) => {
       this._placeCamera(target, d, 0);
       this.camera.updateMatrixWorld();
-      let ok = true;
+      let xmax = 0;
+      let ymin = Infinity;
+      let ymax = -Infinity;
       for (const p of pts) {
         const v = p.clone().project(this.camera);
-        const topLimit = 1 - hudFrac * 2 - 0.02;
-        if (Math.abs(v.x) > 0.98 || v.y > topLimit || v.y < -0.96) {
-          ok = false;
-          break;
-        }
+        xmax = Math.max(xmax, Math.abs(v.x));
+        ymin = Math.min(ymin, v.y);
+        ymax = Math.max(ymax, v.y);
       }
-      if (ok) hi = d;
+      return { xmax, ymin, ymax };
+    };
+    let lo = 5;
+    let hi = 160;
+    for (let i = 0; i < 30; i++) {
+      const d = (lo + hi) / 2;
+      const m = measure(d);
+      if (m.xmax <= 0.98 && m.ymax - m.ymin <= topLim - botLim) hi = d;
       else lo = d;
     }
+    const m = measure(hi);
+    const dy = (topLim + botLim) / 2 - (m.ymax + m.ymin) / 2;
+    if (Math.abs(dy) > 0.001) this.camera.setViewOffset(wpx, hpx, 0, (dy * hpx) / 2, wpx, hpx);
     this.camBase.target.copy(target);
     this.camBase.dist = hi;
+    // 카메라가 멀어지는 좁은 화면에서도 안개에 묻히지 않도록
+    if (this.scene.fog) {
+      this.scene.fog.near = hi * 0.95;
+      this.scene.fog.far = hi * 2.6;
+    }
+    this.camera.far = Math.max(200, hi * 4);
+    this.camera.updateProjectionMatrix();
   }
 
   _placeCamera(target, dist, sway) {

@@ -47,6 +47,19 @@ export class InputManager {
     this.down.delete(e.code);
   }
 
+  // 터치 버튼 → 키보드와 같은 경로로 입력 (모든 캐릭터 동일 조작)
+  virtualKey(code, isDown) {
+    if (isDown) {
+      if (this.down.has(code)) return;
+      this.down.set(code, ++this.counter);
+      this.latched.add(code);
+      const fake = { code, repeat: false, target: null, preventDefault() {} };
+      for (const fn of this.listeners) fn(fake);
+    } else {
+      this.down.delete(code);
+    }
+  }
+
   // playerId ↔ 키 프로필 / 게임패드 배정
   setAssignments(list) {
     this.assignments = list;

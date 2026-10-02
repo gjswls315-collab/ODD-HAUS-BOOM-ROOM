@@ -129,9 +129,18 @@ export class App {
     this.ui.showTitle({
       onMode: (mode) => this.goLobby(mode),
       onHowTo: () => this.ui.showHowTo(() => this.goTitle()),
+      onWatch: () => this.startWatch(),
     });
     this.audio.setTempo(100);
     this.audio.startMusic();
+  }
+
+  // CPU 4명 관전 (키보드가 없는 기기에서도 게임을 확인할 수 있도록)
+  startWatch() {
+    const ids = PLAYABLE_CHARACTER_IDS.slice().sort(() => Math.random() - 0.5).slice(0, 4);
+    this.mode = 'battle';
+    this.lastSetup = { mode: 'battle', players: ids.map((id, i) => ({ slot: i, characterId: id, bot: true })) };
+    this.startMatch();
   }
 
   goLobby(mode) {
@@ -179,7 +188,10 @@ export class App {
     };
     const gm = new GameManager(setup);
     this.attract = false;
-    this._setMatch(gm, { hudTopPx: 96 });
+    const touch = window.matchMedia?.('(pointer: coarse)').matches || 'ontouchstart' in window;
+    const phone = window.innerWidth <= 700;
+    const hasHuman = setup.players.some((p) => !p.bot);
+    this._setMatch(gm, { hudTopPx: phone ? 132 : 96, bottomPx: touch && hasHuman ? 215 : 0 });
     let padIndex = 0;
     this.input.setAssignments(
       this.lastSetup.players
