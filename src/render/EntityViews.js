@@ -466,7 +466,7 @@ export class MrOddView {
     const baseX = THREE.MathUtils.clamp(this.targetX * 0.6, -this.W / 2 + 3, this.W / 2 - 3);
     if (this.phase === 'rise') {
       const k = clamp01(this.t / 0.9);
-      this.root.position.set(baseX, -4.2 + easeOutBack(k) * 3.4, this.backZ);
+      this.root.position.set(baseX, -4.2 + easeOutBack(k) * 3.0, this.backZ);
       r.head.rotation.y = Math.sin(this.t * 1.6) * 0.35;
       r.head.rotation.x = 0.35;
       // 손이 목표 위로
@@ -481,7 +481,7 @@ export class MrOddView {
       }
     } else if (this.phase === 'sink') {
       const k = clamp01(this.t / 0.8);
-      this.root.position.y = -0.8 - k * 4;
+      this.root.position.y = -1.2 - k * 4;
       r.handR.position.lerp(new THREE.Vector3(1.9, 1.4, 0.6), 1 - Math.exp(-4 * dt));
       if (k >= 1) {
         this.root.visible = false;

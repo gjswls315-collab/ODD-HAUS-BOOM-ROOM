@@ -182,7 +182,11 @@ src/
 | 스킬/캐릭터별 컨트롤러/Q 바인딩 재유입 방지, 코어의 Three.js 비의존 | `architecture.test.js` |
 | 모든 스테이지 × BATTLE/TEAM, CPU 4인 150초 무오류 | `architecture.test.js` |
 
-브라우저(Chromium)에서 Lounge 기준으로 실제 키 입력(이동 D / 설치 SPACE)과 아이템 성장·MAX 정지를 VIN·PICKER·A.A.·REX 로 확인했습니다.
+브라우저(Chromium)에서도 확인했습니다.
+- Lounge: 실제 키 입력(이동 D / 설치 SPACE)과 아이템 성장·MAX 정지 — VIN·PICKER·A.A.·REX
+- 로컬 2P: P1(WASD)·P2(방향키/ENTER)가 서로 독립적으로 이동·설치
+- 화면 흐름: 타이틀 → 조작법 → BATTLE → 캐릭터 선택 → 스테이지 선택 → 카운트다운 → 일시정지/재개 → 결과
+- 6개 스테이지 렌더링, MR. ODD House Event 연출
 
 ## 개발 단계 현황
 

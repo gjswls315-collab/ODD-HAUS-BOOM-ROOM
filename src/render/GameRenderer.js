@@ -152,9 +152,7 @@ export class GameRenderer {
 
   clearMatch() {
     if (!this.gm) return;
-    this.matchRoot.traverse((o) => {
-      if (o.isMesh && o.material && o.material.map && o.material.map.isCanvasTexture === false) o.material.dispose();
-    });
+    this.fx?.dispose();
     this.matchRoot.removeFromParent();
     this.gm = null;
   }
