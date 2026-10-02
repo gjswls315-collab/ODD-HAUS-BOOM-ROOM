@@ -1,7 +1,7 @@
 {
   "name": "odd-haus-boom-room",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.4.0",
   "description": "ODD HAUS: BOOM ROOM — 3D quarter-view party bomb game (stat-based ruleset, GDD v2)",
   "type": "module",
   "scripts": {

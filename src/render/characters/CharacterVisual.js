@@ -4,6 +4,7 @@ import { clone as skeletonClone } from 'three/addons/utils/SkeletonUtils.js';
 import { CHARACTER_VISUALS } from '../../config/characterVisualConfig.js';
 import { buildPlaceholder } from './placeholders.js';
 import { group, mesh, torus } from '../kit.js';
+import { mergeChildrenDeep } from '../propFactory.js';
 
 // ─────────────────────────────────────────────────────────────
 // CharacterVisual — PlayerRoot 의 VisualModel 레이어.
@@ -95,6 +96,7 @@ export class CharacterVisual {
     this.cfg = CHARACTER_VISUALS[characterId];
     const gltf = glbCache.get(characterId);
     this.rig = gltf ? buildFromGlb(characterId, gltf) : buildPlaceholder(characterId);
+    if (!gltf) mergeChildrenDeep(this.rig.root);
     this.object = this.rig.root;
     this.t = 0;
     this.phase = 0;
@@ -119,7 +121,7 @@ export class CharacterVisual {
     this.rig.root.add(this.pulseRing, this.pulseRing2);
     this.handRings = [];
     for (const a of [this.rig.armL, this.rig.armR]) {
-      const hand = a?.children[a.children.length - 1];
+      const hand = a ? a.children.filter((c) => !c.isMesh).pop() || a.children[a.children.length - 1] : null;
       if (!hand) continue;
       const hr = make(0.08, 0.012);
       hand.add(hr);

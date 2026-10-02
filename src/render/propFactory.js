@@ -187,7 +187,7 @@ const BUILDERS = {
       top.add(mesh(box(0.03, 0.03, 0.14), mat('#111'), { p: [x, 0.04, 0.16] }));
       top.add(mesh(box(0.05, 0.04, 0.04), mat('#ededed'), { p: [x, 0.06, 0.12 + ((i * 37) % 7) * 0.012] }));
     }
-    for (let i = 0; i < 8; i++) top.add(mesh(box(0.04, 0.02, 0.02), basic(i < 5 ? '#6ee3a3' : i < 7 ? '#ffc55c' : '#ff5a4f', { toneMapped: false }), { p: [W / 2 - 0.4 + i * 0.045, 0.04, -0.3], cast: false }));
+    for (let i = 0; i < 8; i++) top.add(mesh(box(0.04, 0.02, 0.02), mat(i < 5 ? '#6ee3a3' : i < 7 ? '#ffc55c' : '#ff5a4f', { emissive: i < 5 ? '#6ee3a3' : i < 7 ? '#ffc55c' : '#ff5a4f', ei: 1.4 }), { p: [W / 2 - 0.4 + i * 0.045, 0.04, -0.3], cast: false }));
     g.add(top);
     return g;
   },
@@ -261,7 +261,7 @@ const BUILDERS = {
     platter.add(mesh(torus(1.32, 0.022, 6, 64), basic('#d6a8ff', { toneMapped: false }), { p: [0, 0.1, 0], r: [Math.PI / 2, 0, 0], cast: false }));
     for (let i = 0; i < 16; i++) {
       const a = (i / 16) * Math.PI * 2;
-      platter.add(mesh(box(0.06, 0.012, 0.06), basic(i % 2 ? '#4fb8ff' : '#b46bff', { toneMapped: false }), { p: [Math.cos(a) * 1.37, 0.065, Math.sin(a) * 1.37], cast: false }));
+      platter.add(mesh(box(0.06, 0.012, 0.06), mat(i % 2 ? '#4fb8ff' : '#b46bff', { emissive: i % 2 ? '#4fb8ff' : '#b46bff', ei: 1.6 }), { p: [Math.cos(a) * 1.37, 0.065, Math.sin(a) * 1.37], cast: false }));
     }
     g.add(platter);
     g.add(mesh(cyl(0.3, 0.34, 0.42, 24), mat('#24242c', { metal: 0.6, rough: 0.3 }), { p: [0, 0.31, 0] }));
@@ -301,7 +301,7 @@ const BUILDERS = {
     const flowers = ['#ff7aa8', '#ffd166', '#ffffff'];
     for (let i = 0; i < 5; i++) {
       const a = i * 1.3 + seed;
-      g.add(mesh(sphere(0.05, 8, 6), mat(flowers[i % 3], { emissive: flowers[i % 3], ei: 0.15 }), { p: [Math.cos(a) * 0.25, 0.8, Math.sin(a) * 0.25] }));
+      g.add(mesh(sphere(0.05, 8, 6), mat(flowers[i % 3], { rough: 0.6 }), { p: [Math.cos(a) * 0.25, 0.8, Math.sin(a) * 0.25] }));
     }
     return g;
   },
@@ -333,7 +333,7 @@ const BUILDERS = {
     for (let i = 0; i < 6; i++) {
       const a = i * 1.05 + seed;
       g.add(mesh(sphere(0.12, 8, 6), mat('#3f8a4a'), { p: [Math.cos(a) * 0.12, 0.48, Math.sin(a) * 0.12] }));
-      g.add(mesh(sphere(0.07, 8, 6), mat(cols[(seed + i) % 4], { emissive: cols[(seed + i) % 4], ei: 0.12 }), { p: [Math.cos(a) * 0.15, 0.6, Math.sin(a) * 0.15] }));
+      g.add(mesh(sphere(0.07, 8, 6), mat(cols[(seed + i) % 4], { rough: 0.6 }), { p: [Math.cos(a) * 0.15, 0.6, Math.sin(a) * 0.15] }));
     }
     return g;
   },
@@ -758,7 +758,7 @@ Object.assign(BUILDERS, {
     for (let i = 0; i < 10; i++) {
       const a = i * 1.7 + seed;
       const r = 0.2 + (i % 4) * 0.15;
-      g.add(mesh(sphere(0.055, 8, 6), mat(pick(flowers, i + seed), { emissive: pick(flowers, i + seed), ei: 0.15 }), { p: [Math.cos(a) * r, 0.82, Math.sin(a) * r] }));
+      g.add(mesh(sphere(0.055, 8, 6), mat(pick(flowers, i + seed), { rough: 0.6 }), { p: [Math.cos(a) * r, 0.82, Math.sin(a) * r] }));
     }
     // 작은 정원 랜턴
     g.add(mesh(cyl(0.02, 0.02, 0.5, 6), mat('#2a2a30', { metal: 0.6 }), { p: [W / 2 - 0.15, 0.68, D / 2 - 0.15] }));
@@ -856,42 +856,106 @@ Object.assign(BUILDERS, {
 export function buildProp(kind, ctx) {
   const fn = BUILDERS[kind] || BUILDERS.box;
   const g = fn({ w: 1, d: 1, face: { x: 0, z: 1 }, theme: {}, seed: 0, ...ctx });
-  if (ctx.merge !== false) mergeStatic(g);
+  if (ctx.merge !== false) {
+    mergeStatic(g);
+    mergeChildrenDeep(g);
+  }
   g.userData.prop = kind;
   return g;
 }
 
-// 정적 메쉬를 머티리얼별로 병합해 드로우콜 감소 (이름 있는 애니메이션 파트는 유지)
-function mergeStatic(root) {
+// 정적 메쉬 병합 (드로우콜 감소). 이름 있는 애니메이션 파트는 유지.
+//   텍스처 / 발광이 없는 머티리얼은 색을 정점 색으로 옮겨 "같은 질감(거칠기·금속감)"끼리 하나로 합친다.
+export function mergeStatic(root) {
   root.updateMatrixWorld(true);
   const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
-  const buckets = new Map();
-  const victims = [];
-  root.traverse((o) => {
-    if (!o.isMesh || Array.isArray(o.material) || o.material.transparent) return;
-    let p = o;
+  mergeInto(root, collectMeshes(root, (o) => {
+    let p = o.parent;
     while (p && p !== root) {
-      if (p.name) return;
+      if (p.name) return false;
       p = p.parent;
     }
-    const key = `${o.material.uuid}|${o.castShadow ? 1 : 0}`;
-    const geo = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
-    for (const k of Object.keys(geo.attributes)) if (!['position', 'normal', 'uv'].includes(k)) geo.deleteAttribute(k);
-    if (!geo.attributes.uv) return;
-    geo.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld));
-    if (!buckets.has(key)) buckets.set(key, { mat: o.material, cast: o.castShadow, geos: [] });
-    buckets.get(key).geos.push(geo);
-    victims.push(o);
+    return true;
+  }), inv);
+}
+
+// 애니메이션 리그용: 각 그룹의 "직속" 메쉬끼리만 병합 (팔·다리 피벗 등 움직이는 그룹 구조는 유지)
+export function mergeChildrenDeep(root) {
+  const groups = [];
+  root.traverse((o) => {
+    if (!o.isMesh) groups.push(o);
   });
-  if (victims.length < 3) return;
-  for (const v of victims) v.removeFromParent();
+  for (const g of groups) {
+    g.updateMatrixWorld(true);
+    const inv = new THREE.Matrix4().copy(g.matrixWorld).invert();
+    mergeInto(g, g.children.filter((c) => c.isMesh && canMerge(c)), inv, 2);
+  }
+}
+
+function canMerge(o) {
+  return o.isMesh && !o.name && !Array.isArray(o.material) && !o.material.transparent && o.material.isMeshStandardMaterial && !o.isSkinnedMesh;
+}
+
+function collectMeshes(root, pathOk) {
+  const out = [];
+  root.traverse((o) => {
+    if (canMerge(o) && pathOk(o)) out.push(o);
+  });
+  return out;
+}
+
+// 질감 양자화 — 거칠기 0.2 단위, 금속감 3단계 (눈에 띄지 않는 차이로 묶음 수를 줄인다)
+const qRough = (r) => Math.min(1, Math.max(0.2, Math.round(r * 5) / 5));
+const qMetal = (m) => (m < 0.3 ? 0 : m < 0.7 ? 0.5 : 0.85);
+const vcMatCache = new Map();
+function vertexColorMaterial(m) {
+  const r = qRough(m.roughness);
+  const mt = qMetal(m.metalness);
+  const key = `${r}|${mt}|${m.side}|${m.flatShading}`;
+  if (!vcMatCache.has(key)) {
+    vcMatCache.set(key, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: r, metalness: mt, side: m.side, flatShading: m.flatShading }));
+  }
+  return vcMatCache.get(key);
+}
+
+function mergeInto(parent, meshes, inv, minCount = 3) {
+  if (meshes.length < minCount) return;
+  const buckets = new Map();
+  for (const o of meshes) {
+    const m = o.material;
+    const plain = !m.map && m.emissive.r + m.emissive.g + m.emissive.b === 0;
+    const key = plain ? `vc|${qRough(m.roughness)}|${qMetal(m.metalness)}|${m.side}|${m.flatShading}|${o.castShadow ? 1 : 0}` : `${m.uuid}|${o.castShadow ? 1 : 0}`;
+    if (!buckets.has(key)) buckets.set(key, { mat: plain ? vertexColorMaterial(m) : m, plain, cast: o.castShadow, items: [] });
+    buckets.get(key).items.push(o);
+  }
   for (const b of buckets.values()) {
-    const merged = mergeGeometries(b.geos, false);
+    if (b.items.length < 2) continue;
+    const geos = [];
+    for (const o of b.items) {
+      const geo = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+      for (const k of Object.keys(geo.attributes)) if (!['position', 'normal', 'uv'].includes(k)) geo.deleteAttribute(k);
+      if (!geo.attributes.uv) geo.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(geo.attributes.position.count * 2), 2));
+      if (b.plain) {
+        const c = o.material.color;
+        const n = geo.attributes.position.count;
+        const arr = new Float32Array(n * 3);
+        for (let i = 0; i < n; i++) {
+          arr[i * 3] = c.r;
+          arr[i * 3 + 1] = c.g;
+          arr[i * 3 + 2] = c.b;
+        }
+        geo.setAttribute('color', new THREE.Float32BufferAttribute(arr, 3));
+      }
+      geo.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld));
+      geos.push(geo);
+    }
+    const merged = mergeGeometries(geos, false);
     if (!merged) continue;
+    for (const o of b.items) o.removeFromParent();
     const m = new THREE.Mesh(merged, b.mat);
     m.castShadow = b.cast;
     m.receiveShadow = true;
-    root.add(m);
+    parent.add(m);
   }
 }
 
