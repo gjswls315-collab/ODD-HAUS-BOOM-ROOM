@@ -337,3 +337,46 @@ describe('Match tempo (v4: 4~6 min, early farming → mid fights → late chaos)
     expect(gm.tempoInterval(30)).toBeLessThan(30);
   });
 });
+
+describe('Random start positions (every match starts somewhere different)', () => {
+  const fourBots = ['vin', 'picker', 'rex', 'buddy'].map((c, i) => ({ slot: i, characterId: c, bot: true }));
+  const open = (grid, x, y) => {
+    const c = grid.get(x, y);
+    return !!c && !c.border && !c.gimmick && c.type === CELL.EMPTY;
+  };
+
+  for (const id of Object.keys(STAGES)) {
+    it(`${id}: random spawns are safe (L-shaped 2-cell room), spread out and seed-dependent`, () => {
+      const seen = new Set();
+      for (const seed of [1, 2, 3, 4, 5, 6]) {
+        const gm = new GameManager({ mode: 'battle', stageId: id, players: fourBots, seed, skipCountdown: true, spawn: 'random' });
+        const pos = gm.players.list.map((p) => ({ x: p.cellX, y: p.cellY }));
+        seen.add(JSON.stringify(pos));
+        expect(new Set(pos.map((p) => `${p.x},${p.y}`)).size).toBe(4);
+        for (const p of pos) {
+          expect(open(gm.grid, p.x, p.y), `${id} seed ${seed} spawn ${p.x},${p.y}`).toBe(true);
+          // 수직인 두 방향으로 2칸씩 비어 있는 L 이 하나 이상
+          const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+          const clear = (dx, dy) => open(gm.grid, p.x + dx, p.y + dy) && open(gm.grid, p.x + 2 * dx, p.y + 2 * dy);
+          const hasL = dirs.some(([ax, ay]) => clear(ax, ay) && dirs.some(([bx, by]) => ax * bx + ay * by === 0 && clear(bx, by)));
+          expect(hasL, `${id} seed ${seed} L-room at ${p.x},${p.y}`).toBe(true);
+          // 턴테이블 링 위가 아니다
+          for (const c of gm.grid.cells) if (c.turntable) expect(Math.max(Math.abs(c.x - p.x), Math.abs(c.y - p.y))).toBeGreaterThan(1);
+        }
+        let minD = Infinity;
+        for (let i = 0; i < 4; i++) for (let j = i + 1; j < 4; j++) minD = Math.min(minD, Math.abs(pos[i].x - pos[j].x) + Math.abs(pos[i].y - pos[j].y));
+        expect(minD, `${id} seed ${seed}`).toBeGreaterThanOrEqual(7);
+      }
+      expect(seen.size).toBeGreaterThan(3);
+      // 같은 시드는 같은 배치 (결정론적 시뮬레이션)
+      const a = new GameManager({ mode: 'battle', stageId: id, players: fourBots, seed: 9, skipCountdown: true, spawn: 'random' });
+      const b = new GameManager({ mode: 'battle', stageId: id, players: fourBots, seed: 9, skipCountdown: true, spawn: 'random' });
+      expect(a.players.list.map((p) => [p.x, p.y])).toEqual(b.players.list.map((p) => [p.x, p.y]));
+    });
+  }
+
+  it('fixed spawns stay the default (tests / replays)', () => {
+    const gm = new GameManager({ mode: 'battle', stageId: 'lounge', players: fourBots, seed: 1, skipCountdown: true });
+    expect(gm.players.list.map((p) => [p.x, p.y]).sort()).toEqual([[1, 1], [1, 13], [15, 1], [15, 13]].sort());
+  });
+});

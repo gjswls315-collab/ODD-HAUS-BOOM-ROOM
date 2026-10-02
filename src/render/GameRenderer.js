@@ -15,15 +15,16 @@ const PITCH = THREE.MathUtils.degToRad(50);
 const FOV = 34;
 
 // v4 카메라: Soft Follow + Dynamic Zoom
-//   살아 있는 플레이어(사람 우선)의 중심을 부드럽게 따라가고,
-//   서로 가까우면 확대 / 멀어지면 축소 (최대 축소 제한 — 큰 맵은 일부가 화면 밖으로 나갈 수 있다)
+//   살아 있는 플레이어 "모두"를 담도록 부드럽게 따라가고, 서로 가까워지면 조금 확대 / 멀어지면 축소
+//   (시작할 때 1P 쪽으로 확대하지 않는다 — 사람 플레이어는 항상 화면 안에 들어오도록 중심만 보정)
+//   최대 축소 제한이 있어 큰 맵은 일부가 화면 밖으로 나갈 수 있다
 export const CAMERA_CONFIG = {
-  minView: [11, 8], // 가장 가까울 때 보이는 칸 수 (가로, 세로)
-  maxView: [16, 12.5], // 가장 멀 때 — 이보다 큰 맵은 일부가 화면 밖
+  minView: [14, 10.5], // 가장 가까울 때 보이는 칸 수 (가로, 세로) — 너무 바짝 당기지 않는다
+  maxView: [17.5, 15.5], // 가장 멀 때 — 17×15 맵은 전부 보이고, 이보다 큰 맵은 일부가 화면 밖
   margin: 2.6, // 플레이어 묶음 바깥 여유 칸
-  followRate: 2.4,
-  zoomRate: 1.7,
-  introHold: 1.2, // 시작 직후 전체 보기 유지 시간
+  followRate: 2.0,
+  zoomRate: 1.2,
+  startHold: 4, // 경기 시작 후 이 시간 동안은 처음 화면(전체 보기) 그대로
 };
 
 const PROP_DEBRIS = {
@@ -435,6 +436,7 @@ export class GameRenderer {
 
       // 플레이어
       for (const p of gm.players.list) this.playerViews.get(p.id)?.update(dt, p, this.t);
+      this._speedTrails(dt, gm);
 
       // 폭탄
       const seenB = new Set();
@@ -498,46 +500,37 @@ export class GameRenderer {
     this.renderer.render(this.scene, this.camera);
   }
 
-  // 따라갈 대상: 살아 있는 사람 플레이어 우선, 가까운 CPU 는 화면에 들어오는 만큼 포함
+  // 따라갈 대상: 살아 있는 플레이어 전원 (사람 플레이어는 화면 밖으로 나가지 않도록 따로 표시)
   _interest() {
-    const gm = this.gm;
-    const alive = gm.players.list.filter((p) => !p.isEliminated);
+    const alive = this.gm.players.list.filter((p) => !p.isEliminated);
     if (!alive.length) return null;
-    const humans = alive.filter((p) => !p.isBot);
-    const core = humans.length ? humans : alive;
     const box = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
-    const add = (p) => {
+    for (const p of alive) {
       box.x0 = Math.min(box.x0, p.x);
       box.x1 = Math.max(box.x1, p.x);
       box.y0 = Math.min(box.y0, p.y);
       box.y1 = Math.max(box.y1, p.y);
-    };
-    core.forEach(add);
-    let sx = 0;
-    let sy = 0;
-    let sw = 0;
-    for (const p of core) {
-      sx += p.x * 2;
-      sy += p.y * 2;
-      sw += 2;
     }
-    if (humans.length) {
-      const C = CAMERA_CONFIG;
-      const maxW = this._viewSize(this.camMax).w - C.margin * 2;
-      const maxH = this._viewSize(this.camMax).h - C.margin * 2;
-      for (const b of alive.filter((p) => p.isBot)) {
-        const nx0 = Math.min(box.x0, b.x);
-        const nx1 = Math.max(box.x1, b.x);
-        const ny0 = Math.min(box.y0, b.y);
-        const ny1 = Math.max(box.y1, b.y);
-        if (nx1 - nx0 > maxW || ny1 - ny0 > maxH) continue;
-        add(b);
-        sx += b.x;
-        sy += b.y;
-        sw += 1;
+    return { box, cx: (box.x0 + box.x1) / 2, cy: (box.y0 + box.y1) / 2, humans: alive.filter((p) => !p.isBot) };
+  }
+
+  // SPEED 가 오를수록 발밑 먼지 자국이 촘촘해진다 (아이템으로 빨라진 걸 눈으로 확인)
+  _speedTrails(dt, gm) {
+    if (!this.trails) this.trails = new Map();
+    for (const p of gm.players.list) {
+      if (!p.isActive || !p.moving) continue;
+      const extra = p.speedLevel - p.stats.start.speed + (p.modifiers.speedOverrideTime > 0 ? 1 : 0);
+      if (extra <= 0) continue;
+      let acc = (this.trails.get(p.id) || 0) + dt * (3 + extra * 4);
+      if (acc >= 1) {
+        acc -= 1;
+        const w = this.toWorld(p.x, p.y);
+        const back = { up: [0, 0.3], down: [0, -0.3], left: [0.3, 0], right: [-0.3, 0] }[p.facing] || [0, 0];
+        const skate = p.modifiers.speedOverrideTime > 0;
+        this.fx.sparkle({ x: w.x + back[0], y: 0.08, z: w.z + back[1] }, skate ? '#ffd166' : '#efe6d6', 2 + Math.min(3, extra), { spread: 0.18, up: 0.5, gravity: 0 });
       }
+      this.trails.set(p.id, acc);
     }
-    return { box, cx: sx / sw, cy: sy / sw };
   }
 
   _updateCamera(dt) {
@@ -557,16 +550,27 @@ export class GameRenderer {
         follow = 3;
         zoom = 3;
       }
-    } else if (this.dynamicCamera && this.zoomModel && gm.phase !== 'COUNTDOWN' && gm.matchTime > CAMERA_CONFIG.introHold) {
+    } else if (this.dynamicCamera && this.zoomModel && gm.phase !== 'COUNTDOWN' && gm.matchTime > CAMERA_CONFIG.startHold) {
       const it = this._interest();
       if (it) {
         const C = CAMERA_CONFIG;
         const bw = it.box.x1 - it.box.x0 + 1 + C.margin * 2;
         const bh = it.box.y1 - it.box.y0 + 1 + C.margin * 2;
         dist = Math.min(this.camMax, Math.max(this.camMin, this._distFor(bw, bh)));
-        // 맵 밖 빈 공간이 많이 보이지 않도록 중심을 아레나 안쪽으로 제한
         const view = this._viewSize(dist);
-        const w = this.toWorld(it.cx, it.cy);
+        // 모두 담지 못할 때도 사람 플레이어는 화면 안에 남도록 중심을 옮긴다
+        let cx = it.cx;
+        let cy = it.cy;
+        const hx = view.w / 2 - 1.5;
+        const hy = view.h / 2 - 1.5;
+        for (const h of it.humans) {
+          if (h.x > cx + hx) cx = h.x - hx;
+          if (h.x < cx - hx) cx = h.x + hx;
+          if (h.y > cy + hy) cy = h.y - hy;
+          if (h.y < cy - hy) cy = h.y + hy;
+        }
+        // 맵 밖 빈 공간이 많이 보이지 않도록 중심을 아레나 안쪽으로 제한
+        const w = this.toWorld(cx, cy);
         const base = this.camBase.target;
         const limX = Math.max(0, (this.W - view.w) / 2 + 0.6);
         const limZ = Math.max(0, (this.H - view.h) / 2 + 0.6);

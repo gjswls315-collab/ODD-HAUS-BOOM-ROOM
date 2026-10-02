@@ -86,6 +86,7 @@ export class App {
     this.mode = mode;
     this.lastStage = stageId;
     this.lastSetup = { mode, players };
+    this.fixedSpawn = params.get('spawn') === 'fixed';
     this.startMatch({ seed: params.get('seed') ? Number(params.get('seed')) : undefined, skipCountdown: params.get('fast') === '1' });
   }
 
@@ -117,6 +118,7 @@ export class App {
       players: ids.map((id, i) => ({ slot: i, characterId: id, bot: true })),
       seed: Math.floor(Math.random() * 1e6),
       skipCountdown: true,
+      spawn: 'random',
     });
     this._setMatch(gm, { hudTopPx: 0, dynamic: false });
     this.attract = true;
@@ -186,6 +188,7 @@ export class App {
       players: this.lastSetup.players.map((p) => ({ slot: p.slot, characterId: p.characterId, team: p.team, bot: p.bot })),
       seed: seed ?? Math.floor(Math.random() * 1e9),
       skipCountdown,
+      spawn: this.fixedSpawn ? 'fixed' : 'random', // 매 경기 다른 시작 위치 (?spawn=fixed 로 고정 — 테스트용)
     };
     const gm = new GameManager(setup);
     this.attract = false;

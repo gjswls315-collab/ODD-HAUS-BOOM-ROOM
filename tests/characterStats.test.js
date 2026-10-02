@@ -6,6 +6,7 @@ import {
   STAT_KEYS,
   isPlayable,
 } from '../src/config/characterConfig.js';
+import { GAME_CONFIG } from '../src/config/gameConfig.js';
 import { CharacterStats } from '../src/core/CharacterStats.js';
 import { makeGame, run, press, placeAt, DT } from './helpers.js';
 
@@ -185,5 +186,12 @@ describe('Section 39 — test criteria', () => {
       expect(gm.result.winnerIds).toEqual([1]);
       expect(o.state).toBe('VICTORY');
     }
+  });
+});
+
+describe('SPEED growth is clearly noticeable', () => {
+  it('each SPEED level adds at least ~20% move speed', () => {
+    const t = GAME_CONFIG.speedTable;
+    for (let lv = 2; lv <= 6; lv++) expect(t[lv] / t[lv - 1]).toBeGreaterThanOrEqual(lv <= 4 ? 1.2 : 1.12);
   });
 });

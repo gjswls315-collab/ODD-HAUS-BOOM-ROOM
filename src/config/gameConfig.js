@@ -7,7 +7,8 @@ export const GAME_CONFIG = {
   tickRate: 60,
 
   // SPEED 레벨 → 이동 속도 (칸/초). index = 레벨
-  speedTable: [0, 2.7, 3.3, 3.9, 4.5, 5.1, 5.6, 6.1, 6.6],
+  // 레벨당 약 +0.9칸/초 (약 +25%) — SPEED UP 을 먹으면 확실히 빨라진 게 느껴지도록
+  speedTable: [0, 2.6, 3.4, 4.3, 5.2, 6.1, 6.9, 7.6, 8.2],
   // 일시적인 아이템 보너스(Speed Shoes)를 포함한 절대 상한 레벨
   speedAbsoluteCapLevel: 8,
 

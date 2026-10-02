@@ -4,6 +4,7 @@ import { getStage } from '../config/stageConfig.js';
 import { MATCH_PHASE } from './constants.js';
 import { Rng } from './rng.js';
 import { GridManager } from './GridManager.js';
+import { pickRandomSpawns } from './spawns.js';
 import { PlayerManager } from './PlayerManager.js';
 import { BeatBombManager } from './BeatBombManager.js';
 import { SoundWaveManager } from './SoundWaveManager.js';
@@ -21,6 +22,7 @@ import { createModeRules } from './modes.js';
 //   stageId: 'lounge' | ...,
 //   players: [{ slot, characterId, team?, bot? }],
 //   seed?, timeLimit?, dropTable?, skipCountdown?, houseEvents?: false,
+//   spawn?: 'fixed' | 'random'  (random = 매 경기 다른 시작 위치, 기본 fixed — 테스트 결정성)
 //   stageDef? (테스트용 커스텀 스테이지)
 // }
 // ─────────────────────────────────────────────────────────────
@@ -40,6 +42,11 @@ export class GameManager {
 
     this.stageDef = setup.stageDef || getStage(setup.stageId || 'lounge');
     this.grid = GridManager.fromStage(this.stageDef, this.rng);
+    if (setup.spawn === 'random') {
+      const spawns = pickRandomSpawns(this.grid, this.rng, Math.max(4, setup.players.length));
+      if (spawns) this.grid.spawns = spawns;
+      this.grid.version = 0;
+    }
     this.players = new PlayerManager(this, setup.players);
     this.bombs = new BeatBombManager(this);
     this.waves = new SoundWaveManager(this);
