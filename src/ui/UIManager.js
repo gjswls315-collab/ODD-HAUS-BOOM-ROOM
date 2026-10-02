@@ -193,6 +193,7 @@ export class UIManager {
               <span><span class="key">SPACE</span></span><span>Beat Bomb 설치</span>
               <span><span class="key">SHIFT</span></span><span>Dash (짧은 회피)</span>
               <span><span class="key">E</span></span><span>특수 아이템 사용</span>
+              <span><span class="key">N</span></span><span>미니맵 켜기/끄기 (터치: 타이머 탭)</span>
               <span><span class="key">ESC</span></span><span>Pause</span>
             </div>
             <p class="hint">로컬 멀티: P1 WASD/SPACE/L-SHIFT/E · P2 방향키/ENTER/R-SHIFT/ / · P3 IJKL/U/Y/O · P4 NUM8456/NUM7/NUM1/NUM9 · 게임패드 A 폭탄 · B 아이템 · X/RB 대시</p>
@@ -450,7 +451,7 @@ export class UIManager {
     const node = this._layer(
       'hud',
       el(`<div class="screen hud passthrough">
-        <div class="hud-top"><div class="hud-side left"></div><div class="timer"><b>03:00</b><small>${gm.stageDef.name}</small></div><div class="hud-side right"></div></div>
+        <div class="hud-top"><div class="hud-side left"></div><div class="timer"><b>${fmtTime(gm.timeLeft)}</b><small>${gm.stageDef.name}</small></div><div class="hud-side right"></div></div>
         ${showControls && gm.players.list.some((p) => !p.isBot) ? `<div class="hud-controls"><span class="key">${hudMoveLabel(gm)}</span>이동 <span class="key">SPACE</span>Beat Bomb <span class="key">SHIFT</span>Dash <span class="key">E</span>Item <span class="key">N</span>Map <span class="key">ESC</span>Pause</div>` : ''}
       </div>`),
     );
