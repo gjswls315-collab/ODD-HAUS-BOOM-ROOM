@@ -1,0 +1,280 @@
+import { GAME_CONFIG, speedLevelToCellsPerSecond } from '../config/gameConfig.js';
+import { getCharacter } from '../config/characterConfig.js';
+import { CharacterStats } from './CharacterStats.js';
+import { DIRS, PLAYER_STATE } from './constants.js';
+
+const S = PLAYER_STATE;
+
+// ─────────────────────────────────────────────────────────────
+// PlayerController — 모든 캐릭터가 사용하는 "단 하나의" 컨트롤러.
+// 캐릭터별 Controller(VinController 등)는 만들지 않는다.
+// 캐릭터 차이 = CharacterStats(데이터) + CharacterVisual(렌더 레이어) 뿐.
+//
+// intent = { dir: 'up'|'down'|'left'|'right'|null, bomb: bool, dash: bool, item: bool }
+//   (bomb / dash / item 은 이번 틱에 눌렸는지 — edge trigger)
+// ─────────────────────────────────────────────────────────────
+export class PlayerController {
+  constructor({ id, slot, characterId, team = null, isBot = false, spawn, color }) {
+    this.id = id;
+    this.slot = slot;
+    this.characterId = characterId;
+    this.def = getCharacter(characterId);
+    this.name = this.def.name;
+    this.team = team;
+    this.isBot = isBot;
+    this.color = color;
+
+    this.stats = new CharacterStats(this.def);
+    // 아이템의 일시 효과 — 기본 Stats 와 분리 (ItemModifier)
+    this.modifiers = { speedBonus: 0, speedBonusTime: 0 };
+    this.heldItem = null; // { type, charges }
+
+    this.x = spawn.x;
+    this.y = spawn.y;
+    this.spawn = { ...spawn };
+    this.facing = 'down';
+    this.lastCellX = spawn.x;
+    this.lastCellY = spawn.y;
+
+    this.state = S.IDLE;
+    this.stateTime = 0;
+    this.actionTimer = 0;
+    this.moving = false;
+
+    this.dash = { time: 0, cooldown: 0, dir: null };
+    this.forced = null; // { dx, dy, remaining } 바람 / Rolling LP 등 강제 이동
+    this.trap = null; // { time, maxTime, byId }
+    this.invulnerable = 0;
+
+    this.activeBombs = 0;
+    this.score = 0;
+    this.eliminatedAt = null;
+  }
+
+  get cellX() {
+    return Math.round(this.x);
+  }
+  get cellY() {
+    return Math.round(this.y);
+  }
+
+  // ── 현재 능력치 (기본 Stats) ─────────────────────
+  get maxBombs() {
+    return this.stats.current.bomb;
+  }
+  get waveRange() {
+    return this.stats.current.wave;
+  }
+  get speedLevel() {
+    return Math.min(this.stats.current.speed + this.modifiers.speedBonus, GAME_CONFIG.speedAbsoluteCapLevel);
+  }
+  get moveSpeed() {
+    return speedLevelToCellsPerSecond(this.speedLevel);
+  }
+
+  get isEliminated() {
+    return this.state === S.ELIMINATED;
+  }
+  get isTrapped() {
+    return this.state === S.TRAPPED;
+  }
+  // 이동 / 설치 / 아이템 사용이 가능한 상태
+  get isActive() {
+    return this.state !== S.TRAPPED && this.state !== S.ELIMINATED && this.state !== S.VICTORY;
+  }
+
+  setState(state) {
+    if (this.state === state) return;
+    this.state = state;
+    this.stateTime = 0;
+  }
+
+  // ─────────────────────────────────────────────────
+  update(dt, intent, gm) {
+    this.stateTime += dt;
+    if (this.invulnerable > 0) this.invulnerable = Math.max(0, this.invulnerable - dt);
+    if (this.dash.cooldown > 0) this.dash.cooldown = Math.max(0, this.dash.cooldown - dt);
+    if (this.modifiers.speedBonusTime > 0) {
+      this.modifiers.speedBonusTime -= dt;
+      if (this.modifiers.speedBonusTime <= 0) {
+        this.modifiers.speedBonusTime = 0;
+        this.modifiers.speedBonus = 0;
+        gm.emit('modifierEnd', { playerId: this.id, modifier: 'speedShoes' });
+      }
+    }
+    if (this.actionTimer > 0) this.actionTimer = Math.max(0, this.actionTimer - dt);
+
+    if (this.state === S.ELIMINATED || this.state === S.VICTORY) return;
+
+    // 강제 이동 (바람, Rolling LP 밀림) — 입력보다 우선
+    if (this.forced) {
+      const step = Math.min(this.forced.remaining, 9 * dt);
+      this.x += this.forced.dx * step;
+      this.y += this.forced.dy * step;
+      this.forced.remaining -= step;
+      if (this.forced.remaining <= 1e-6) {
+        this.x = Math.round(this.x);
+        this.y = Math.round(this.y);
+        this.forced = null;
+      }
+      this._checkCellChange(gm);
+      return;
+    }
+
+    if (this.state === S.TRAPPED) {
+      this.trap.time += dt;
+      if (intent.dir) {
+        this.facing = intent.dir;
+        this.moveAlong(intent.dir, GAME_CONFIG.trap.trappedMoveSpeed * dt, gm);
+      }
+      this._checkCellChange(gm);
+      if (this.trap.time >= this.trap.maxTime) {
+        gm.players.eliminate(this, this.trap.byId, 'timeout');
+      }
+      return;
+    }
+
+    if (this.state === S.RESCUED && this.stateTime > 0.6) this.setState(S.IDLE);
+
+    // ── Dash (공통 회피 — 캐릭터 스킬 아님) ──
+    if (intent.dash && this.dash.cooldown <= 0 && this.dash.time <= 0) {
+      this.dash.dir = intent.dir || this.facing;
+      this.dash.time = GAME_CONFIG.dash.duration;
+      this.dash.cooldown = GAME_CONFIG.dash.cooldown;
+      this.facing = this.dash.dir;
+      gm.emit('dash', { playerId: this.id, dir: this.dash.dir });
+    }
+
+    // ── Beat Bomb 설치 (누른 순간 서 있던 칸에 설치되도록 이동보다 먼저) ──
+    if (intent.bomb) {
+      if (gm.bombs.tryPlace(this)) {
+        this.actionTimer = GAME_CONFIG.actionAnimTime;
+        this.setState(S.PLACE_BOMB);
+      }
+    }
+
+    // ── 특수 아이템 사용 (공통 ItemManager 가 처리) ──
+    if (intent.item) {
+      if (intent.dir) this.facing = intent.dir;
+      if (gm.items.useHeld(this)) {
+        this.actionTimer = GAME_CONFIG.actionAnimTime;
+        this.setState(S.USE_ITEM);
+      }
+    }
+
+    let moved = false;
+    if (this.dash.time > 0) {
+      const dashSpeed = GAME_CONFIG.dash.distance / GAME_CONFIG.dash.duration;
+      const dtUse = Math.min(dt, this.dash.time);
+      this.dash.time -= dt;
+      moved = this.moveAlong(this.dash.dir, dashSpeed * dtUse, gm);
+    } else if (intent.dir) {
+      this.facing = intent.dir;
+      moved = this.moveAlong(intent.dir, this.moveSpeed * dt, gm);
+    }
+    this.moving = moved;
+    this._checkCellChange(gm);
+
+    // ── 상태 결정 ──
+    if (this.actionTimer > 0 && (this.state === S.PLACE_BOMB || this.state === S.USE_ITEM)) return;
+    if (this.state === S.RESCUED) return;
+    if (this.dash.time > 0) this.setState(S.DASH);
+    else if (moved) this.setState(S.MOVE);
+    else this.setState(S.IDLE);
+  }
+
+  _checkCellChange(gm) {
+    const cx = this.cellX;
+    const cy = this.cellY;
+    if (cx !== this.lastCellX || cy !== this.lastCellY) {
+      this.lastCellX = cx;
+      this.lastCellY = cy;
+      gm.onPlayerEnterCell(this, cx, cy);
+    }
+  }
+
+  // ─────────────────────────────────────────────────
+  // 그리드 이동 + 코너 보정 (Crazy Arcade / Bomberman 방식)
+  moveAlong(dirName, dist, gm) {
+    const d = DIRS[dirName];
+    let remaining = dist;
+    let moved = false;
+    for (let guard = 0; remaining > 1e-6 && guard < 12; guard++) {
+      const consumed = this._moveStep(d, Math.min(remaining, 0.2), gm);
+      if (consumed <= 1e-6) break;
+      remaining -= consumed;
+      moved = true;
+    }
+    return moved;
+  }
+
+  _moveStep(d, step, gm) {
+    const horizontal = d.x !== 0;
+    const s = horizontal ? d.x : d.y;
+    const posMain = horizontal ? this.x : this.y;
+    const posPerp = horizontal ? this.y : this.x;
+    const cMain = Math.round(posMain);
+    const cPerp = Math.round(posPerp);
+    const off = posPerp - cPerp;
+
+    const blockedAt = (main, lane) => (horizontal ? gm.isBlockedFor(this, main, lane) : gm.isBlockedFor(this, lane, main));
+    const setMain = (v) => (horizontal ? (this.x = v) : (this.y = v));
+    const setPerp = (v) => (horizontal ? (this.y = v) : (this.x = v));
+
+    // 1) 내 라인 앞 칸이 열려 있으면: 라인 중앙으로 정렬하며 전진
+    if (!blockedAt(cMain + s, cPerp)) {
+      if (Math.abs(off) > 1e-4) {
+        const a = Math.min(Math.abs(off), step);
+        setPerp(posPerp - Math.sign(off) * a);
+        const rest = step - a;
+        if (rest > 0) setMain(posMain + s * rest);
+        return step;
+      }
+      setMain(posMain + s * step);
+      return step;
+    }
+
+    // 2) 앞이 막혀 있으면 현재 칸 중앙까지는 전진 가능
+    const toCenter = (cMain - posMain) * s;
+    if (toCenter > 1e-4) {
+      const a = Math.min(toCenter, step);
+      setMain(posMain + s * a);
+      return a;
+    }
+
+    // 3) 코너 보정: 옆 라인 앞 칸이 열려 있으면 그쪽으로 미끄러짐
+    if (Math.abs(off) >= 0.5 - GAME_CONFIG.movement.cornerAssist) {
+      const lane2 = cPerp + Math.sign(off);
+      if (!blockedAt(cMain, lane2) && !blockedAt(cMain + s, lane2)) {
+        const a = Math.min(step, 0.5 - Math.abs(off) + 0.01);
+        setPerp(posPerp + Math.sign(off) * a);
+        return a;
+      }
+    } else if (Math.abs(off) <= 1e-4) {
+      // 정확히 중앙: 한쪽 대각선만 열려 있을 때는 보정하지 않는다 (의도치 않은 이동 방지)
+      return 0;
+    }
+    // 중앙으로 복귀
+    if (Math.abs(off) > 1e-4) {
+      const a = Math.min(Math.abs(off), step);
+      setPerp(posPerp - Math.sign(off) * a);
+      return 0; // 전진하지 않았으므로 반복 종료
+    }
+    return 0;
+  }
+
+  snapshot() {
+    return {
+      id: this.id,
+      slot: this.slot,
+      characterId: this.characterId,
+      team: this.team,
+      x: this.x,
+      y: this.y,
+      state: this.state,
+      stats: this.stats.snapshot(),
+      heldItem: this.heldItem ? { ...this.heldItem } : null,
+      activeBombs: this.activeBombs,
+    };
+  }
+}
