@@ -1,13 +1,51 @@
 import { GAME_CONFIG } from '../../config/gameConfig.js';
+import { ITEM_TYPES } from '../../config/itemConfig.js';
 import { DIRS, DIR_NAMES, dirFromDelta } from '../constants.js';
 import { Rng } from '../rng.js';
 
 // ─────────────────────────────────────────────────────────────
-// CPU 플레이어 — 사람과 똑같은 intent(dir/bomb/dash/item)를 만들어
-// 공통 PlayerController 에 넣는다. 캐릭터별 AI 분기 없음.
+// CPU 플레이어 (BOOM ROOM v4) — State Machine + A* + Stuck Recovery
+//
+// 사람과 똑같은 intent(dir/bomb/dash/item)를 만들어 공통 PlayerController 에 넣는다.
+// 캐릭터별 AI 분기 없음 — 캐릭터 차이는 Stats(SPEED/BOMB/WAVE) 뿐.
+//
+//   SCAN ─▶ ITEM_SEEK ─▶ ATTACK ─▶ ESCAPE ─▶ POSITIONING ─▶ SCAN
+//
+// 우선순위 (높은 순)
+//   1 위험 지역 탈출          5 상대 동선 차단
+//   2 갇히지 않는 위치 확보    6 Beat Bomb 설치
+//   3 필요한 성장 아이템       7 특수 아이템
+//   4 부술 상자 접근           8 상대 추적
+//
+// STUCK CHECK: 같은 칸에 1.2초 이상 머물면 경로 폐기 → 새 도달 가능 칸 → 없으면 주변 안전 칸.
+// 폭탄은 "터지기 전에 도달 가능한 안전 칸"이 있을 때만 놓는다.
 // ─────────────────────────────────────────────────────────────
 
 const INF = Infinity;
+
+export const BOT_STATE = Object.freeze({
+  SCAN: 'SCAN',
+  ITEM_SEEK: 'ITEM_SEEK',
+  ATTACK: 'ATTACK',
+  ESCAPE: 'ESCAPE',
+  POSITIONING: 'POSITIONING',
+  TRAPPED: 'TRAPPED',
+});
+const ST = BOT_STATE;
+
+export const BOT_CONFIG = {
+  stuckTime: 1.2, // 같은 칸에 이만큼 머물면 STUCK
+  blockedTime: 0.45, // 이동 입력 중인데 좌표가 그대로면 경로가 막힌 것
+  blacklistTime: 4, // STUCK 으로 버린 목표 칸은 잠시 다시 고르지 않는다
+  bombEscapeMargin: 0.45, // 폭발 전 안전 칸 도착 여유 (초)
+  switchMargin: 2.5, // 목표 교체 히스테리시스
+  // 경기 템포별 가중치 — 초반엔 파밍, 후반엔 공격
+  tempo: {
+    early: { item: 1.3, farm: 1.35, attack: 0.45, chase: 0.2 },
+    mid: { item: 1.0, farm: 1.0, attack: 1.0, chase: 0.7 },
+    late: { item: 0.8, farm: 0.6, attack: 1.45, chase: 1.3 },
+  },
+};
 
 // 폭탄 하나의 Wave 가 닿을 칸 (SoundWaveManager 와 같은 규칙)
 export function blastCells(gm, x0, y0, range, ignoreBomb = null) {
@@ -33,8 +71,9 @@ export function blastCells(gm, x0, y0, range, ignoreBomb = null) {
   return { cells, hitBombs };
 }
 
-// 각 칸이 Wave 에 맞기까지 남은 시간 (Infinity = 안전)
-export function computeDanger(gm, extraBomb = null) {
+// 각 칸이 Wave 에 맞기까지 남은 시간 (Infinity = 안전). extraBomb = 가상의 폭탄 {x,y,range,t}
+// viewer 를 주면: REMOTE 를 가진 상대의 폭탄은 언제든 터질 수 있다고 본다
+export function computeDanger(gm, extraBomb = null, viewer = null) {
   const { grid } = gm;
   const W = grid.width;
   const danger = new Float64Array(W * grid.height).fill(INF);
@@ -42,15 +81,40 @@ export function computeDanger(gm, extraBomb = null) {
 
   for (const w of gm.waves.cells.values()) danger[w.y * W + w.x] = 0;
 
+  const remoteRisk = (b) => {
+    if (!viewer || b.ownerId === viewer.id) return INF;
+    const owner = gm.players.get(b.ownerId);
+    return owner && owner.isActive && owner.abilities.remote ? 0.7 : INF;
+  };
   const entries = gm.bombs.bombs
     .filter((b) => !b.flying)
-    .map((b) => ({ b, x: b.x, y: b.y, range: b.range, t: Math.max(0, b.fuse) / rate }));
+    .map((b) => ({ b, x: b.x, y: b.y, range: b.range, t: Math.min(Math.max(0, b.fuse) / rate, remoteRisk(b)) }));
   for (const b of gm.bombs.bombs) {
     if (b.flying && b.motion) {
       entries.push({ b, x: b.motion.toX, y: b.motion.toY, range: b.range, t: Math.max(b.fuse, GAME_CONFIG.bomb.minFuseAfterLanding) / rate });
     }
   }
   if (extraBomb) entries.push({ b: null, ...extraBomb });
+
+  // DJ BOOTH 턴테이블: 회전이 다가오면 링 위 폭탄은 "다음 칸"에서도 터질 수 있다
+  const tt = gm.stage?.get?.('turntables');
+  let ringSoon = null;
+  if (tt && tt.decks.length) {
+    const until = tt.cfg.interval - tt.timer;
+    if (until < 2.2) {
+      ringSoon = until;
+      for (const d of tt.decks) {
+        d.ring.forEach((c, i) => {
+          for (const e of entries.slice()) {
+            if (e.x === c.x && e.y === c.y && e.t > until) {
+              const n = d.ring[(i + 1) % d.ring.length];
+              entries.push({ b: e.b, x: n.x, y: n.y, range: e.range, t: e.t });
+            }
+          }
+        });
+      }
+    }
+  }
 
   const blasts = entries.map((e) => blastCells(gm, e.x, e.y, e.range, e.b));
   // Chain Reaction 반영 (완화 반복)
@@ -75,9 +139,19 @@ export function computeDanger(gm, extraBomb = null) {
     }
   });
 
+  // 회전 직전의 링 칸은 서 있으면 실려 가므로 위험으로 본다 (밟고 지나가지 않음)
+  if (ringSoon !== null && ringSoon < 1.4) {
+    for (const d of tt.decks) {
+      for (const c of d.ring) {
+        const k = c.y * W + c.x;
+        if (ringSoon + 0.4 < danger[k]) danger[k] = ringSoon + 0.4;
+      }
+    }
+  }
+
   // 기믹 경고 (Rolling LP / 앰프 Pulse / 상자 낙하) 도 위험으로 간주
   for (const tg of gm.getTelegraphs()) {
-    if (tg.kind === 'lane' || tg.kind === 'pulse') {
+    if (tg.kind === 'lane' || tg.kind === 'pulse' || tg.kind === 'drop') {
       const remain = Math.max(0, (1 - (tg.progress ?? 0)) * 1.5);
       for (const c of tg.cells) {
         const k = c.y * W + c.x;
@@ -88,29 +162,90 @@ export function computeDanger(gm, extraBomb = null) {
   return danger;
 }
 
+// 작은 이진 힙 (A* / Dijkstra 용)
+class MinHeap {
+  constructor() {
+    this.k = [];
+    this.p = [];
+  }
+  get size() {
+    return this.k.length;
+  }
+  push(key, pri) {
+    const { k, p } = this;
+    let i = k.length;
+    k.push(key);
+    p.push(pri);
+    while (i > 0) {
+      const j = (i - 1) >> 1;
+      if (p[j] <= p[i]) break;
+      [k[i], k[j]] = [k[j], k[i]];
+      [p[i], p[j]] = [p[j], p[i]];
+      i = j;
+    }
+  }
+  pop() {
+    const { k, p } = this;
+    const top = k[0];
+    const lk = k.pop();
+    const lp = p.pop();
+    if (k.length) {
+      k[0] = lk;
+      p[0] = lp;
+      let i = 0;
+      for (;;) {
+        const l = i * 2 + 1;
+        const r = l + 1;
+        let m = i;
+        if (l < k.length && p[l] < p[m]) m = l;
+        if (r < k.length && p[r] < p[m]) m = r;
+        if (m === i) break;
+        [k[i], k[m]] = [k[m], k[i]];
+        [p[i], p[m]] = [p[m], p[i]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+// 지나가는 순간 그 칸이 터지는가 (Wave 잔류 시간 포함)
+function hitWindow(dv, t) {
+  return dv === 0 || (dv < t + 0.35 && dv > t - 0.6);
+}
+
 export class BotBrain {
   constructor(playerId, { skill = 0.75, seed = 1 } = {}) {
     this.playerId = playerId;
     this.skill = skill;
     this.seed = seed;
     this.rng = new Rng(seed * 7919 + playerId * 104729 + 13);
+    this.state = ST.SCAN;
+    this.stateTime = 0;
     this.thinkTimer = 0;
     this.path = null; // [{x,y}] 현재 따라가는 경로
-    this.pathKind = null; // 'flee' | 'goal'
-    this.goal = null;
-    this.goalTimer = 0;
-    this.bombCooldown = 0;
+    this.target = null; // { x, y, kind, score }
+    this.stuck = { key: -1, t: 0 };
+    this.blocked = { t: 0, x: 0, y: 0 };
+    this.blacklist = new Map(); // cellKey → 만료 시각
+    this.stuckRecoveries = 0;
+    this.lastDir = null;
+    this.clock = 0;
   }
 
+  // 매 틱 호출 → intent
   update(gm, dt) {
     const p = gm.players.get(this.playerId);
     const out = { dir: null, bomb: false, dash: false, item: false };
     if (!p || p.isEliminated) return out;
+    this.clock += dt;
+    this.stateTime += dt;
     this.thinkTimer -= dt;
-    this.bombCooldown -= dt;
-    this.goalTimer -= dt;
+
+    this._trackStuck(gm, p, dt);
+
     if (this.thinkTimer <= 0) {
-      this.thinkTimer = 0.08 + (1 - this.skill) * 0.16 + this.rng.next() * 0.04;
+      this.thinkTimer = 0.07 + (1 - this.skill) * 0.14 + this.rng.next() * 0.04;
       const d = this.think(gm, p);
       out.bomb = d.bomb;
       out.dash = d.dash;
@@ -119,10 +254,101 @@ export class BotBrain {
     }
     if (this.path) out.dir = this._follow(p);
     else if (!out.dir && this._fallbackDir) out.dir = this._fallbackDir;
+    this.lastDir = out.dir;
     return out;
   }
 
-  // 경로 따라가기 (매 틱) — 반올림 칸 기준으로 다음 칸 방향
+  _setState(s) {
+    if (this.state === s) return;
+    this.state = s;
+    this.stateTime = 0;
+  }
+
+  // ── STUCK CHECK ─────────────────────────────────
+  _trackStuck(gm, p, dt) {
+    if (!p.isActive) {
+      this.stuck.t = 0;
+      return;
+    }
+    const W = gm.grid.width;
+    const key = p.cellY * W + p.cellX;
+    if (key === this.stuck.key) this.stuck.t += dt;
+    else {
+      this.stuck.key = key;
+      this.stuck.t = 0;
+    }
+    // 이동 입력 중인데 좌표가 그대로 → 경로가 막혔다 (다른 폭탄 등) → 즉시 재계획
+    if (this.lastDir && Math.abs(p.x - this.blocked.x) + Math.abs(p.y - this.blocked.y) < 0.004) {
+      this.blocked.t += dt;
+      if (this.blocked.t >= BOT_CONFIG.blockedTime) {
+        this.blocked.t = 0;
+        this.path = null;
+        this.thinkTimer = 0;
+      }
+    } else this.blocked.t = 0;
+    this.blocked.x = p.x;
+    this.blocked.y = p.y;
+
+    if (this.stuck.t >= BOT_CONFIG.stuckTime) {
+      this.stuck.t = 0;
+      this._recoverStuck(gm, p);
+    }
+  }
+
+  // 경로 폐기 → 새 도달 가능 칸 → 없으면 주변 안전 칸
+  _recoverStuck(gm, p) {
+    const { grid } = gm;
+    const W = grid.width;
+    if (this.target) this.blacklist.set(this.target.y * W + this.target.x, this.clock + BOT_CONFIG.blacklistTime);
+    this.path = null;
+    this.target = null;
+    this.stuckRecoveries++;
+    const danger = computeDanger(gm, null, p);
+    const field = this._search(gm, p, danger);
+    const here = p.cellY * W + p.cellX;
+    const options = [];
+    for (let k = 0; k < field.cost.length; k++) {
+      if (field.cost[k] === INF || k === here || danger[k] !== INF) continue;
+      const s = field.steps[k];
+      if (s < 2 || s > 9 || this._blacklisted(k)) continue;
+      const x = k % W;
+      const y = (k - x) / W;
+      options.push({ k, w: this._openness(gm, p, x, y) + this.rng.next() * 2 });
+    }
+    options.sort((a, b) => b.w - a.w);
+    let pick = options[0]?.k;
+    if (pick === undefined) {
+      for (const dir of this.rng.shuffle(DIR_NAMES.slice())) {
+        const d = DIRS[dir];
+        const nx = p.cellX + d.x;
+        const ny = p.cellY + d.y;
+        if (gm.isBlockedFor(p, nx, ny)) continue;
+        if (danger[ny * W + nx] === INF || danger[here] !== INF) {
+          pick = ny * W + nx;
+          break;
+        }
+      }
+    }
+    if (pick === undefined) return;
+    const x = pick % W;
+    const y = (pick - x) / W;
+    const path = field.cost[pick] !== INF ? this._pathTo(field, pick) : [{ x: p.cellX, y: p.cellY }, { x, y }];
+    this.path = path;
+    this.target = { x, y, kind: 'position', score: 0, until: this.clock + 2.5 };
+    this._setState(danger[here] !== INF ? ST.ESCAPE : ST.POSITIONING);
+  }
+
+  _blacklisted(k) {
+    const t = this.blacklist.get(k);
+    if (t === undefined) return false;
+    if (t < this.clock) {
+      this.blacklist.delete(k);
+      return false;
+    }
+    return true;
+  }
+
+  // ── 경로 따라가기 (매 틱) ───────────────────────
   _follow(p) {
     const path = this.path;
     const cx = p.cellX;
@@ -146,20 +372,41 @@ export class BotBrain {
   }
 
   _arrival(p, steps) {
-    return steps / Math.max(1, p.moveSpeed) + 0.2;
+    return steps / Math.max(1, p.moveSpeed) + 0.15;
   }
 
-  // BFS (부모 포인터) — 걸을 수 있는 칸
-  _bfs(gm, p, danger = null, avoidDanger = false) {
+  // ── A* (goal 지정) / Dijkstra (goal 없음 → 전체 비용장) ──
+  //   비용 = 1칸 1 + 곧 터질 칸 통과 2.5 + 상대 바로 옆 0.6
+  //   지나가는 순간 터지는 칸은 통과 불가
+  //   strict  : 위험 칸(곧 터질 칸)은 아예 지나가지 않는다 — 평소 목표 이동용 (ESCAPE ↔ 이동 왕복 방지)
+  //   relaxed : 지나가는 타이밍을 무시 — 안전 경로가 전혀 없을 때의 마지막 탈출 시도
+  _search(gm, who, danger, { goal = -1, from = -1, blockExtra = -1, strict = false, relaxed = false } = {}) {
     const { grid } = gm;
     const W = grid.width;
-    const dist = new Int32Array(W * grid.height).fill(-1);
-    const parent = new Int32Array(W * grid.height).fill(-1);
-    const start = p.cellY * W + p.cellX;
-    const q = [start];
-    dist[start] = 0;
-    for (let qi = 0; qi < q.length; qi++) {
-      const k = q[qi];
+    const N = W * grid.height;
+    const cost = new Float64Array(N).fill(INF);
+    const steps = new Int16Array(N).fill(-1);
+    const parent = new Int32Array(N).fill(-1);
+    const closed = new Uint8Array(N);
+    const start = from >= 0 ? from : who.cellY * W + who.cellX;
+    const gx = goal >= 0 ? goal % W : 0;
+    const gy = goal >= 0 ? (goal - gx) / W : 0;
+    const h = (k) => {
+      if (goal < 0) return 0;
+      const x = k % W;
+      return Math.abs(x - gx) + Math.abs((k - x) / W - gy);
+    };
+    const enemies = gm.players.list.filter((o) => o !== who && o.isActive && !gm.mode.areAllies(o, who));
+    const speed = Math.max(1, who.moveSpeed);
+    cost[start] = 0;
+    steps[start] = 0;
+    const heap = new MinHeap();
+    heap.push(start, h(start));
+    while (heap.size) {
+      const k = heap.pop();
+      if (closed[k]) continue;
+      closed[k] = 1;
+      if (k === goal) break;
       const x = k % W;
       const y = (k - x) / W;
       for (const dir of DIR_NAMES) {
@@ -168,50 +415,35 @@ export class BotBrain {
         const ny = y + d.y;
         if (!grid.inBounds(nx, ny)) continue;
         const nk = ny * W + nx;
-        if (dist[nk] >= 0 || gm.isBlockedFor(p, nx, ny)) continue;
-        if (avoidDanger && danger) {
-          const t = this._arrival(p, dist[k] + 1);
-          const dv = danger[nk];
-          if (dv === 0 || (dv < t + 0.35 && dv > t - 0.6)) continue;
+        if (closed[nk] || nk === blockExtra || gm.isBlockedFor(who, nx, ny)) continue;
+        const s = steps[k] + 1;
+        const dv = danger[nk];
+        if (strict ? dv !== INF : relaxed ? dv === 0 : hitWindow(dv, s / speed + 0.15)) continue;
+        let c = cost[k] + 1;
+        if (dv !== INF) c += 2.5;
+        for (const e of enemies) if (Math.abs(e.cellX - nx) + Math.abs(e.cellY - ny) <= 1) c += 0.6;
+        if (c < cost[nk]) {
+          cost[nk] = c;
+          steps[nk] = s;
+          parent[nk] = k;
+          heap.push(nk, c + h(nk));
         }
-        dist[nk] = dist[k] + 1;
-        parent[nk] = k;
-        q.push(nk);
       }
     }
-    return { dist, parent, W, start };
+    return { cost, steps, parent, W, start };
   }
 
-  _pathTo(bfs, k) {
-    const { parent, W, start } = bfs;
+  _pathTo(field, k) {
+    const { parent, W, start } = field;
     const out = [];
     let c = k;
-    for (let guard = 0; c >= 0 && guard < 400; guard++) {
+    for (let guard = 0; c >= 0 && guard < 600; guard++) {
       const x = c % W;
       out.push({ x, y: (c - x) / W });
       if (c === start) break;
       c = parent[c];
     }
     return out.reverse();
-  }
-
-  // 위험을 피해 도달 가능한 가장 가까운 안전 칸까지의 경로
-  _safePath(gm, p, danger, limitTime = INF) {
-    const bfs = this._bfs(gm, p, danger, true);
-    let best = -1;
-    let bestD = INF;
-    for (let k = 0; k < bfs.dist.length; k++) {
-      const d = bfs.dist[k];
-      if (d < 0 || danger[k] !== INF) continue;
-      if (this._arrival(p, d) >= limitTime) continue;
-      // 막다른 길보다 출구가 많은 칸 선호
-      const score = d - this._openness(gm, p, k % bfs.W, Math.floor(k / bfs.W)) * 0.3;
-      if (score < bestD) {
-        bestD = score;
-        best = k;
-      }
-    }
-    return best >= 0 ? this._pathTo(bfs, best) : null;
   }
 
   _openness(gm, p, x, y) {
@@ -223,21 +455,51 @@ export class BotBrain {
     return n;
   }
 
+  // 상대가 다음 폭탄으로 노릴 수 있는 칸인가 (상대 Wave 길이의 직선 위)
+  _enemyThreat(gm, p, x, y) {
+    let t = 0;
+    for (const o of gm.players.list) {
+      if (o === p || !o.isActive || gm.mode.areAllies(o, p)) continue;
+      if (o.activeBombs >= o.maxBombs) continue;
+      const dx = Math.abs(o.cellX - x);
+      const dy = Math.abs(o.cellY - y);
+      if ((dx === 0 && dy <= o.waveRange) || (dy === 0 && dx <= o.waveRange)) t++;
+    }
+    return t;
+  }
+
+  // 위험(danger)을 피해 도달 가능한 "갇히지 않는" 안전 칸까지의 경로
+  _safePath(gm, p, danger, { limitTime = INF, from = -1, relaxed = false } = {}) {
+    const field = this._search(gm, p, danger, { from, relaxed });
+    const W = field.W;
+    let best = -1;
+    let bestScore = INF;
+    for (let k = 0; k < field.cost.length; k++) {
+      if (field.cost[k] === INF || danger[k] !== INF) continue;
+      if (this._arrival(p, field.steps[k]) >= limitTime) continue;
+      const x = k % W;
+      const y = (k - x) / W;
+      // 막다른 길 / 상대 직선 위는 피한다 (갇히지 않는 위치 확보)
+      const score = field.cost[k] - this._openness(gm, p, x, y) * 0.45 + this._enemyThreat(gm, p, x, y) * 1.5;
+      if (score < bestScore) {
+        bestScore = score;
+        best = k;
+      }
+    }
+    return best >= 0 ? this._pathTo(field, best) : null;
+  }
+
   _pathStillSafe(gm, p, danger) {
     if (!this.path) return false;
     const W = gm.grid.width;
-    const cx = p.cellX;
-    const cy = p.cellY;
-    const i = this.path.findIndex((c) => c.x === cx && c.y === cy);
+    const i = this.path.findIndex((c) => c.x === p.cellX && c.y === p.cellY);
     if (i < 0) return false;
     const end = this.path[this.path.length - 1];
     if (danger[end.y * W + end.x] !== INF) return false;
     for (let j = i + 1; j < this.path.length; j++) {
       const c = this.path[j];
       if (gm.isBlockedFor(p, c.x, c.y)) return false;
-      const t = this._arrival(p, j - i);
-      const dv = danger[c.y * W + c.x];
-      if (dv === 0 || (dv < t + 0.35 && dv > t - 0.6)) return false;
+      if (hitWindow(danger[c.y * W + c.x], this._arrival(p, j - i))) return false;
     }
     return true;
   }
@@ -248,6 +510,86 @@ export class BotBrain {
     return (h % 1000) / 1000;
   }
 
+  // ── 필요 기반 아이템 가치 ───────────────────────
+  //   이미 MAX 인 능력치 아이템은 무시. 많이 부족한 능력치일수록 우선.
+  //   예) SPEED 2/5 · BOMB 3/3 · WAVE 1/4 → WAVE UP > SPEED UP > 특수 > (BOMB UP 무시)
+  itemValue(p, type, gm = null) {
+    const def = ITEM_TYPES[type];
+    if (!def) return 0;
+    if (def.kind === 'stat') {
+      const st = p.stats;
+      const k = def.stat;
+      if (st.current[k] >= st.max[k]) return 0;
+      const missing = (st.max[k] - st.current[k]) / st.max[k];
+      return 10 + 12 * missing;
+    }
+    if (def.kind === 'ability') {
+      if (p.abilities[type]) return 0;
+      return type === 'kick' ? 9 : 8.5;
+    }
+    if (def.kind === 'held') {
+      if (p.heldItem) return p.heldItem.type === type ? 0 : 1.5;
+      if (type === 'needle') return gm?.mode?.def?.team ? 9.5 : 8.5;
+      if (type === 'rollerSkates') return 7.5;
+      return 9; // shield
+    }
+    return 7.5; // random box
+  }
+
+  // (x,y)에 폭탄을 놓았을 때: 부술 상자 / 맞는 상대 / 맞는 아군 / 잃는 아이템
+  _spotInfo(gm, p, x, y, danger) {
+    const { cells } = blastCells(gm, x, y, p.waveRange);
+    const W = gm.grid.width;
+    let boxes = 0;
+    let enemies = 0;
+    let allies = 0;
+    let itemLoss = 0;
+    for (const c of cells) {
+      const cell = gm.grid.get(c.x, c.y);
+      // 이미 다른 폭탄이 부술 상자는 세지 않는다 (중복 폭탄 방지)
+      if (cell && cell.type === 'BREAKABLE' && danger[c.y * W + c.x] === INF) boxes += cell.routeCrate ? 1.5 : 1;
+      if (gm.items.at(c.x, c.y)) itemLoss++;
+      for (const o of gm.players.list) {
+        if (o === p || !o.isActive) continue;
+        if (Math.abs(o.x - c.x) + Math.abs(o.y - c.y) >= 0.8) continue;
+        if (gm.mode.areAllies(o, p)) allies++;
+        else enemies++;
+      }
+    }
+    return { boxes, enemies, allies, itemLoss };
+  }
+
+  // 상대가 가상의 폭탄을 피해 갈 수 있는 안전 칸 수 (동선 차단 평가)
+  _enemyEscapes(gm, e, d2, bombKey) {
+    const field = this._search(gm, e, d2, { blockExtra: bombKey });
+    let n = 0;
+    for (let k = 0; k < field.cost.length; k++) {
+      if (field.cost[k] !== INF && field.steps[k] <= 8 && d2[k] === INF) {
+        n++;
+        if (n >= 4) break;
+      }
+    }
+    return n;
+  }
+
+  // 폭탄을 놓아도 되는가 — 폭발 전에 도달 가능한 "갇히지 않는" 안전 칸이 있어야 한다
+  _safeBombPlan(gm, p, x, y) {
+    const fuse = GAME_CONFIG.bomb.fuseTime / (gm.bombs.fuseRate || 1);
+    const d2 = computeDanger(gm, { x, y, range: p.waveRange, t: fuse }, p);
+    const W = gm.grid.width;
+    const from = y * W + x;
+    const esc = this._safePath(gm, p, d2, { limitTime: fuse - BOT_CONFIG.bombEscapeMargin, from });
+    if (!esc || esc.length < 2) return null;
+    // 도착한 안전 칸에서도 숨 쉴 공간(안전 칸 2개 이상)이 있어야 한다
+    const end = esc[esc.length - 1];
+    const field = this._search(gm, p, d2, { from: end.y * W + end.x, blockExtra: from });
+    let room = 0;
+    for (let k = 0; k < field.cost.length && room < 2; k++) if (field.cost[k] !== INF && field.steps[k] <= 4 && d2[k] === INF) room++;
+    if (room < 2) return null;
+    return { path: esc, d2 };
+  }
+
+  // ─────────────────────────────────────────────────
   think(gm, p) {
     const res = { dir: undefined, bomb: false, dash: false, item: false };
     this._fallbackDir = null;
@@ -255,82 +597,75 @@ export class BotBrain {
     const W = grid.width;
 
     if (p.isTrapped) {
+      this._setState(ST.TRAPPED);
       this.path = null;
-      if (p.heldItem?.type === 'needle') {
-        res.item = true;
-        return res;
-      }
-      const ally = gm.players.list.find((o) => o !== p && o.isActive && gm.mode.areAllies(o, p));
-      if (ally) {
-        const dx = ally.x - p.x;
-        const dy = ally.y - p.y;
-        res.dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';
-      } else res.dir = null;
+      this.target = null;
+      if (p.heldItem?.type === 'needle') res.item = true;
       return res;
     }
     if (!p.isActive) return res;
+    if (this.state === ST.TRAPPED) this._setState(ST.SCAN);
 
-    const danger = computeDanger(gm);
+    const danger = computeDanger(gm, null, p);
     const here = p.cellY * W + p.cellX;
 
-    // ── 1) 위험: 안전 칸으로 (경로 유지) ──
-    if (danger[here] !== INF || this.pathKind === 'flee') {
-      if (this.pathKind === 'flee' && this._pathStillSafe(gm, p, danger)) return res;
-      if (danger[here] === INF) {
-        this.path = null;
-        this.pathKind = null;
-      } else {
-        const path = this._safePath(gm, p, danger);
-        if (path && path.length > 1) {
-          this.path = path;
-          this.pathKind = 'flee';
-          if (path.length >= 3 && danger[here] < 1.0 && p.dash.cooldown <= 0 && this.rng.next() < this.skill) res.dash = true;
-          return res;
-        }
-        // 안전 칸이 없으면 가장 늦게 터지는 이웃으로
-        this.path = null;
-        this.pathKind = null;
-        let bestT = danger[here];
-        let bestDir = null;
-        for (const dir of DIR_NAMES) {
-          const d = DIRS[dir];
-          const nx = p.cellX + d.x;
-          const ny = p.cellY + d.y;
-          if (gm.isBlockedFor(p, nx, ny)) continue;
-          if (danger[ny * W + nx] > bestT) {
-            bestT = danger[ny * W + nx];
-            bestDir = dir;
-          }
-        }
-        res.dir = bestDir;
-        this._fallbackDir = bestDir;
+    // ── 1) ESCAPE: 위험 지역 탈출 ──
+    if (danger[here] !== INF) {
+      if (this.state === ST.ESCAPE && this._pathStillSafe(gm, p, danger)) return res;
+      const path = this._safePath(gm, p, danger);
+      this._setState(ST.ESCAPE);
+      this.target = null;
+      if (path && path.length > 1) {
+        this.path = path;
+        const urgent = danger[here] - this._arrival(p, path.length - 1) < 0.5;
+        if (path.length >= 3 && urgent && p.dash.cooldown <= 0 && this.rng.next() < this.skill) res.dash = true;
         return res;
       }
-    }
-
-    // ── 아이템 사용 (사람과 같은 E 키 규칙) ──
-    if (p.heldItem?.type === 'rollerSkates') res.item = true;
-    if (p.abilities.remote) {
-      for (const b of gm.bombs.bombs.filter((b) => b.ownerId === p.id && !b.flying)) {
-        const { cells } = blastCells(gm, b.x, b.y, b.range, b);
-        const hitsEnemy = cells.some((c) => gm.players.list.some((o) => o.isActive && !gm.mode.areAllies(o, p) && o.cellX === c.x && o.cellY === c.y));
-        const hitsMe = cells.some((c) => c.x === p.cellX && c.y === p.cellY);
-        if (hitsEnemy && !hitsMe) res.item = true;
+      // 제때 닿는 안전 칸이 없으면 → 타이밍을 무시하고라도 가장 가까운 안전 칸으로 (멈춰 서지 않는다)
+      const gamble = this._safePath(gm, p, danger, { relaxed: true });
+      if (gamble && gamble.length > 1) {
+        this.path = gamble;
+        if (p.dash.cooldown <= 0) res.dash = true;
+        return res;
       }
+      // 그래도 없으면 가장 늦게 터지는 / 가장 열린 이웃으로
+      this.path = null;
+      let bestS = -INF;
+      let bestDir = null;
+      for (const dir of DIR_NAMES) {
+        const d = DIRS[dir];
+        const nx = p.cellX + d.x;
+        const ny = p.cellY + d.y;
+        if (gm.isBlockedFor(p, nx, ny)) continue;
+        const dv = danger[ny * W + nx];
+        const sc = (dv === INF ? 50 : dv) * 4 + this._openness(gm, p, nx, ny);
+        if (sc > bestS) {
+          bestS = sc;
+          bestDir = dir;
+        }
+      }
+      res.dir = bestDir;
+      this._fallbackDir = bestDir;
+      return res;
     }
-    if (p.abilities.glove && this._enemyInLine(gm, p, 6)) {
-      const d = DIRS[p.facing];
-      if (gm.bombs.at(p.cellX + d.x, p.cellY + d.y) || gm.bombs.at(p.cellX, p.cellY)) res.item = true;
+    // 탈출 완료 → 내 폭탄이 터질 때까지 POSITIONING
+    if (this.state === ST.ESCAPE) {
+      this.path = null;
+      this.target = null;
+      this._setState(ST.POSITIONING);
     }
 
-    const bfs = this._bfs(gm, p, danger, true);
-    const { dist } = bfs;
+    // ── 아이템 키 (사람과 같은 E 키 규칙) ──
+    res.item = this._wantItemKey(gm, p);
 
-    // ── 2) 갇힌 상대 → 터뜨리기 / 갇힌 팀원 → 구출 ──
+    const field = this._search(gm, p, danger, { strict: true });
+
+    // ── 갇힌 팀원 구출 / 갇힌 상대 마무리 (터치) ──
     for (const o of gm.players.list) {
       if (o === p || !o.isTrapped) continue;
       const k = o.cellY * W + o.cellX;
-      if (dist[k] < 0 || dist[k] > 9) continue;
+      if (field.cost[k] === INF || field.steps[k] > 10) continue;
+      this._setState(ST.ATTACK);
       if (k === here) {
         this.path = null;
         const dx = o.x - p.x;
@@ -338,102 +673,238 @@ export class BotBrain {
         res.dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';
         return res;
       }
-      this.path = this._pathTo(bfs, k);
-      this.pathKind = 'goal';
-      this.goal = { x: o.cellX, y: o.cellY, kind: 'capsule' };
+      this.path = this._pathTo(field, k);
+      this.target = { x: o.cellX, y: o.cellY, kind: 'capsule', score: 99 };
       return res;
     }
 
-    // ── 3) 폭탄 설치 ──
-    if (p.activeBombs < p.maxBombs && this.bombCooldown <= 0 && !gm.bombs.at(p.cellX, p.cellY)) {
-      const value = this._spotValue(gm, p, p.cellX, p.cellY);
-      const atGoal = this.goal && this.goal.kind === 'spot' && this.goal.x === p.cellX && this.goal.y === p.cellY;
-      if (value > 0 && (atGoal || value >= 3 || this.rng.next() < 0.35 + this.skill * 0.3)) {
-        const fuse = GAME_CONFIG.bomb.fuseTime / (gm.bombs.fuseRate || 1);
-        const d2 = computeDanger(gm, { x: p.cellX, y: p.cellY, range: p.waveRange, t: fuse });
-        const esc = this._safePath(gm, p, d2, fuse - 0.5);
-        if (esc && esc.length > 1) {
+    const tempo = BOT_CONFIG.tempo[gm.tempo] || BOT_CONFIG.tempo.mid;
+    const canBomb = p.activeBombs < p.maxBombs && !gm.bombs.at(p.cellX, p.cellY);
+
+    // ── 지금 이 칸에 폭탄을 놓을 가치가 있으면 (동선 차단 / 상자) 바로 설치 ──
+    if (canBomb) {
+      const info = this._spotInfo(gm, p, p.cellX, p.cellY, danger);
+      const atSpot = this.target && this.target.kind === 'bomb' && this.target.x === p.cellX && this.target.y === p.cellY;
+      let want = false;
+      if (info.allies === 0) {
+        if (atSpot && (info.boxes > 0 || info.enemies > 0 || this.target.trap)) want = true;
+        else if (info.enemies > 0 && gm.tempo !== 'early') want = true;
+        else if (info.boxes >= 2 && info.itemLoss === 0) want = true;
+        else if (info.boxes >= 1 && info.itemLoss === 0 && this.rng.next() < 0.25 + this.skill * 0.25) want = true;
+      }
+      if (want) {
+        const plan = this._safeBombPlan(gm, p, p.cellX, p.cellY);
+        if (plan) {
           res.bomb = true;
-          this.path = esc;
-          this.pathKind = 'flee';
-          this.goal = null;
-          this.bombCooldown = 0.3;
+          this.path = plan.path;
+          this.target = null;
+          this._setState(ST.ESCAPE);
           return res;
         }
+        if (atSpot) {
+          this.blacklist.set(here, this.clock + 3);
+          this.target = null;
+          this.path = null;
+        }
       }
     }
 
-    // ── 4) 목표: 아이템 → 폭탄 자리 → 상대 쪽 ──
-    const goalValid =
-      this.goal &&
-      this.path &&
-      this.pathKind === 'goal' &&
-      this.goalTimer > 0 &&
-      dist[this.goal.y * W + this.goal.x] >= 0 &&
-      (this.goal.kind !== 'item' || gm.items.at(this.goal.x, this.goal.y));
-    if (!goalValid) {
-      let target = null;
-      let bestScore = -INF;
-      for (const it of gm.items.items) {
-        const k = it.y * W + it.x;
-        if (dist[k] < 0 || dist[k] > 10 || danger[k] !== INF) continue;
-        const s = 26 - dist[k] * 2 + this._noise(it.x, it.y);
-        if (s > bestScore) {
-          bestScore = s;
-          target = { x: it.x, y: it.y, kind: 'item' };
-        }
-      }
-      for (let k = 0; k < dist.length; k++) {
-        if (dist[k] < 0 || dist[k] > 12 || danger[k] !== INF) continue;
-        const x = k % W;
-        const y = (k - x) / W;
-        const v = this._spotValue(gm, p, x, y);
-        if (v <= 0) continue;
-        const s = Math.min(v, 5) * 4 - dist[k] * 1.3 + this._noise(x, y) * 1.5;
-        if (s > bestScore) {
-          bestScore = s;
-          target = { x, y, kind: 'spot' };
-        }
-      }
-      if (!target) {
-        const enemies = gm.players.list.filter((o) => o.isActive && !gm.mode.areAllies(o, p));
-        let bestD = INF;
-        for (let k = 0; k < dist.length; k++) {
-          if (dist[k] < 0 || danger[k] !== INF) continue;
-          const x = k % W;
-          const y = (k - x) / W;
-          for (const e of enemies) {
-            const d = Math.abs(e.cellX - x) + Math.abs(e.cellY - y) + dist[k] * 0.25 + this._noise(x, y) * 0.5;
-            if (d < bestD) {
-              bestD = d;
-              target = { x, y, kind: 'chase' };
-            }
-          }
-        }
-      }
-      this.goal = target;
-      this.goalTimer = 1.2;
-      if (target) {
-        const k = target.y * W + target.x;
-        this.path = k === here ? null : this._pathTo(bfs, k);
-        this.pathKind = this.path ? 'goal' : null;
-      } else {
-        this.path = null;
-        this.pathKind = null;
-      }
+    // ── SCAN: 목표 선택 (우선순위 2~8 을 점수로) ──
+    const best = this._chooseTarget(gm, p, danger, field, tempo, canBomb || p.activeBombs < p.maxBombs);
+    const cur = this._currentTargetScore(gm, p, danger, field, tempo);
+    if (!best && cur === null) {
+      // 아무 목표도 없으면 → POSITIONING (멈춰 있지 않는다)
+      if (!this.path) this._wander(gm, p, danger, field);
+      return res;
+    }
+    if (cur === null || (best && best.score > cur + BOT_CONFIG.switchMargin)) {
+      this.target = best;
+      const k = best.y * W + best.x;
+      this.path = k === here ? null : this._pathTo(field, k);
+      this._setState(best.state);
+    } else if (this.target && !this.path) {
+      const k = this.target.y * W + this.target.x;
+      if (k !== here && field.cost[k] !== INF) this.path = this._pathTo(field, k);
     }
 
-    // 다음 칸이 위험해지면 멈춤
-    if (this.path && this.pathKind === 'goal') {
+    // 다음 칸이 곧 위험해지면 멈춤
+    if (this.path) {
       const i = this.path.findIndex((c) => c.x === p.cellX && c.y === p.cellY);
       const n = i >= 0 ? this.path[i + 1] : null;
-      if (n && danger[n.y * W + n.x] !== INF) {
+      if (n && danger[n.y * W + n.x] !== INF && hitWindow(danger[n.y * W + n.x], this._arrival(p, 1))) {
         this.path = null;
-        this.pathKind = null;
         res.dir = null;
       }
     }
     return res;
+  }
+
+  // 아이템 키(E) 사용 판단 — ItemManager.useItemKey 의 우선순위와 동일하게 예측
+  _wantItemKey(gm, p) {
+    // GLOVE: 손 닿는 Bomb 을 상대 쪽으로 던지기
+    if (p.abilities.glove) {
+      const d = DIRS[p.facing];
+      const reach = gm.bombs.at(p.cellX, p.cellY) || gm.bombs.at(p.cellX + d.x, p.cellY + d.y);
+      if (reach) return this._enemyInLine(gm, p, 6);
+    }
+    if (p.heldItem?.type === 'rollerSkates') return true;
+    if (p.abilities.remote) {
+      const own = gm.bombs.bombs.filter((b) => b.ownerId === p.id && !b.flying).sort((a, b) => a.placedAt - b.placedAt);
+      const b = own[0];
+      if (b) {
+        const { cells } = blastCells(gm, b.x, b.y, b.range, b);
+        const hits = (o) => cells.some((c) => c.x === o.cellX && c.y === o.cellY);
+        const hitsEnemy = gm.players.list.some((o) => o.isActive && !gm.mode.areAllies(o, p) && hits(o));
+        const hitsFriend = gm.players.list.some((o) => o.isActive && (o === p || gm.mode.areAllies(o, p)) && hits(o));
+        if (hitsEnemy && !hitsFriend) return true;
+      }
+    }
+    return false;
+  }
+
+  _currentTargetScore(gm, p, danger, field, tempo) {
+    const t = this.target;
+    if (!t) return null;
+    const W = gm.grid.width;
+    const k = t.y * W + t.x;
+    if (field.cost[k] === INF || danger[k] !== INF || this._blacklisted(k)) return null;
+    if (t.until !== undefined && this.clock > t.until) return null;
+    if (t.kind === 'item') {
+      const it = gm.items.at(t.x, t.y);
+      if (!it) return null;
+      return this.itemValue(p, it.type, gm) * tempo.item * 1.6 - field.cost[k] * 1.1 + 2;
+    }
+    if (t.kind === 'bomb') {
+      if (p.activeBombs >= p.maxBombs) return null;
+      const info = this._spotInfo(gm, p, t.x, t.y, danger);
+      if (info.allies > 0) return null;
+      if (info.boxes === 0 && info.enemies === 0 && !t.trap) return null;
+      return t.score + 1;
+    }
+    // 추적 / 위치 목표에 도착하면 다시 SCAN
+    if (t.kind === 'chase' || t.kind === 'position') return k === p.cellY * W + p.cellX ? null : t.score;
+    return null;
+  }
+
+  _chooseTarget(gm, p, danger, field, tempo, bombsLeft) {
+    const W = gm.grid.width;
+    const here = p.cellY * W + p.cellX;
+    let best = null;
+    const consider = (c) => {
+      if (!best || c.score > best.score) best = c;
+    };
+
+    // 3·7) 아이템 — 필요 기반
+    for (const it of gm.items.items) {
+      const k = it.y * W + it.x;
+      if (field.cost[k] === INF || field.steps[k] > 14 || danger[k] !== INF || this._blacklisted(k)) continue;
+      const v = this.itemValue(p, it.type, gm);
+      if (v <= 0) continue;
+      const score = v * tempo.item * 1.6 - field.cost[k] * 1.1 + this._noise(it.x, it.y);
+      consider({ x: it.x, y: it.y, kind: 'item', state: ST.ITEM_SEEK, score });
+    }
+
+    // 4·5·6) 폭탄 자리 — 상자(파밍) / 상대(공격·동선 차단)
+    if (bombsLeft) {
+      const enemies = gm.players.list.filter((o) => o !== p && o.isActive && !gm.mode.areAllies(o, p));
+      const spots = [];
+      for (let k = 0; k < field.cost.length; k++) {
+        if (field.cost[k] === INF || field.steps[k] > 13 || danger[k] !== INF || this._blacklisted(k)) continue;
+        const x = k % W;
+        const y = (k - x) / W;
+        if (gm.bombs.at(x, y)) continue;
+        const info = this._spotInfo(gm, p, x, y, danger);
+        if (info.allies > 0) continue;
+        // 초반(파밍 구간)에는 가까이 있는 상대만 노린다
+        const reach = gm.tempo === 'early' ? Math.min(p.waveRange + 1, 3) : p.waveRange + 1;
+        const nearEnemy = (gm.tempo !== 'early' || field.cost[k] <= 5) && enemies.some((e) => Math.abs(e.cellX - x) + Math.abs(e.cellY - y) <= reach);
+        if (info.boxes === 0 && info.enemies === 0 && !nearEnemy) continue;
+        const farm = info.boxes * 3.2 * tempo.farm - info.itemLoss * 3;
+        const attack = info.enemies * 5 * tempo.attack;
+        const score = farm + attack - field.cost[k] * 0.9 + this._noise(x, y) * 1.5 + (k === here ? 0.5 : 0);
+        spots.push({ x, y, k, kind: 'bomb', state: info.enemies > 0 || nearEnemy ? ST.ATTACK : ST.ITEM_SEEK, score, nearEnemy });
+      }
+      spots.sort((a, b) => b.score - a.score);
+      // 상위 후보 몇 개만 "상대 동선 차단" 정밀 평가 (가상 폭탄 → 상대가 피할 칸 수)
+      const fuse = GAME_CONFIG.bomb.fuseTime / (gm.bombs.fuseRate || 1);
+      let evaluated = 0;
+      for (const s of spots) {
+        if (!s.nearEnemy) continue;
+        if (evaluated++ >= 4) break;
+        const d2 = computeDanger(gm, { x: s.x, y: s.y, range: p.waveRange, t: fuse });
+        for (const e of enemies) {
+          if (Math.abs(e.cellX - s.x) + Math.abs(e.cellY - s.y) > p.waveRange + 3) continue;
+          const inBlast = d2[e.cellY * W + e.cellX] !== INF;
+          const escapes = this._enemyEscapes(gm, e, d2, s.k);
+          if (inBlast && escapes === 0) {
+            s.score += 14 * tempo.attack;
+            s.trap = true;
+          } else if (inBlast && escapes <= 2) s.score += 5 * tempo.attack;
+          else if (escapes <= 1) {
+            s.score += 3 * tempo.attack;
+            s.trap = true;
+          }
+        }
+        s.state = ST.ATTACK;
+      }
+      for (const s of spots.slice(0, 12)) consider(s);
+    }
+
+    // 8) 상대 추적 — 부술 상자가 줄어들수록 / 후반일수록 적극적으로
+    const enemies = gm.players.list.filter((o) => o !== p && o.isActive && !gm.mode.areAllies(o, p));
+    if (enemies.length && tempo.chase > 0) {
+      if (this.initialBoxes === undefined) this.initialBoxes = Math.max(1, gm.grid.cells.filter((c) => c.type === 'BREAKABLE').length);
+      const boxesLeft = gm.grid.cells.filter((c) => c.type === 'BREAKABLE').length;
+      const scarcity = 1 - Math.min(1, boxesLeft / this.initialBoxes);
+      let chase = null;
+      for (let k = 0; k < field.cost.length; k++) {
+        if (field.cost[k] === INF || danger[k] !== INF || this._blacklisted(k)) continue;
+        const x = k % W;
+        const y = (k - x) / W;
+        for (const e of enemies) {
+          const dx = Math.abs(e.cellX - x);
+          const dy = Math.abs(e.cellY - y);
+          const md = dx + dy;
+          if (md < 2) continue; // 바로 옆에 붙지는 않는다
+          // 상대가 내 Wave 직선 위에 들어오는 칸 선호
+          const inLine = (dx === 0 && dy <= p.waveRange) || (dy === 0 && dx <= p.waveRange) ? 1.5 : 0;
+          const s = inLine - md * 0.5 - field.cost[k] * 0.12 + this._noise(x, y) * 0.5;
+          if (!chase || s > chase.s) chase = { s, x, y };
+        }
+      }
+      if (chase) consider({ x: chase.x, y: chase.y, kind: 'chase', state: ST.ATTACK, score: (2 + 4 * scarcity) * tempo.chase + chase.s * 0.3 });
+    }
+
+    // 2) 갇히지 않는 위치 — 열린 칸, 상대 직선 밖, 상자 근처
+    if (!best || best.score < 1) {
+      const pos = this._positionTarget(gm, p, danger, field);
+      if (pos) consider(pos);
+    }
+    return best;
+  }
+
+  _positionTarget(gm, p, danger, field) {
+    const W = gm.grid.width;
+    const here = p.cellY * W + p.cellX;
+    let best = null;
+    for (let k = 0; k < field.cost.length; k++) {
+      if (k === here || field.cost[k] === INF || danger[k] !== INF || field.steps[k] > 10 || this._blacklisted(k)) continue;
+      const x = k % W;
+      const y = (k - x) / W;
+      const open = this._openness(gm, p, x, y);
+      if (open < 2) continue;
+      const s = open * 0.8 - this._enemyThreat(gm, p, x, y) * 2.5 - Math.abs(field.steps[k] - 4) * 0.35 + this._noise(x, y);
+      if (!best || s > best.score) best = { x, y, kind: 'position', state: ST.POSITIONING, score: s, until: this.clock + 3 };
+    }
+    return best;
+  }
+
+  _wander(gm, p, danger, field) {
+    const pos = this._positionTarget(gm, p, danger, field);
+    if (!pos) return;
+    this.target = pos;
+    this.path = this._pathTo(field, pos.y * gm.grid.width + pos.x);
+    this._setState(ST.POSITIONING);
   }
 
   _enemyInLine(gm, p, maxDist) {
@@ -445,22 +916,5 @@ export class BotBrain {
       if (gm.players.list.some((o) => o.isActive && !gm.mode.areAllies(o, p) && o.cellX === x && o.cellY === y)) return true;
     }
     return false;
-  }
-
-  // (x,y)에 폭탄을 놓았을 때의 가치: 상자 + 상대 - 아군
-  _spotValue(gm, p, x, y) {
-    const { cells } = blastCells(gm, x, y, p.waveRange);
-    let v = 0;
-    for (const c of cells) {
-      const cell = gm.grid.get(c.x, c.y);
-      if (cell && cell.type === 'BREAKABLE') v += 1;
-      for (const o of gm.players.list) {
-        if (o === p || !o.isActive) continue;
-        const near = Math.abs(o.x - c.x) + Math.abs(o.y - c.y) < 0.8;
-        if (!near) continue;
-        v += gm.mode.areAllies(o, p) ? -5 : 3;
-      }
-    }
-    return v;
   }
 }
