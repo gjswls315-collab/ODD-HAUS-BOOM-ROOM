@@ -1,4 +1,5 @@
 // LP LIBRARY — 특정 Record Box(금색 routeCrate)를 부수면 연결된 숨은 선반이 열려 새 Route 발생.
+// cfg.links 로 명시하거나, 없으면 가장 가까운 상자에 자동 연결.
 // 누구의 Wave 든 동일하게 작동하는 공용 기믹.
 export class RouteCrates {
   constructor(gm, cfg) {
@@ -9,6 +10,10 @@ export class RouteCrates {
 
   init() {
     const { grid } = this.gm;
+    if (this.cfg.links) {
+      for (const l of this.cfg.links) this.links.set(`${l.crate[0]},${l.crate[1]}`, l.opens.map(([x, y]) => ({ x, y })));
+      return;
+    }
     const crates = grid.cells.filter((c) => c.routeCrate);
     const secrets = grid.cells.filter((c) => c.gimmick && c.gimmick.kind === 'secretShelf');
     for (const s of secrets) {

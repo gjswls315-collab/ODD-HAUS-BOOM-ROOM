@@ -275,7 +275,7 @@ export class GameRenderer {
           const p = gm.players.get(e.playerId);
           const w = this.toWorld(p.x, p.y);
           this.fx.sparkle({ x: w.x, y: 0.7, z: w.z }, '#6ee3a3', 30, { spread: 0.8, up: 3 });
-          this.fx.floatText({ x: w.x, y: 1.6, z: w.z }, 'RESCUE!', '#6ee3a3');
+          this.fx.floatText({ x: w.x, y: 1.6, z: w.z }, e.method === 'needle' ? 'ESCAPE!' : 'RESCUE!', '#6ee3a3');
           break;
         }
         case 'playerEliminated': {
@@ -322,6 +322,13 @@ export class GameRenderer {
           for (let i = 0; i < 6; i++) this.fx.sparkle({ x: (Math.random() - 0.5) * this.W, y: 0.4, z: (Math.random() - 0.5) * this.H }, '#d8f0ff', 6, { spread: 0.2, up: 0.3, gravity: 0 });
           this.shake(0.12);
           break;
+        case 'gatesToggled':
+          for (const c of e.cells) {
+            const w = this.toWorld(c.x, c.y);
+            this.fx.ringPulse({ x: w.x, z: w.z }, c.open ? '#6ee3a3' : '#ff3b4f', { to: 1.2 });
+          }
+          this.shake(0.1);
+          break;
         case 'routeOpened':
           for (const c of e.cells) {
             const w = this.toWorld(c.x, c.y);
@@ -339,8 +346,10 @@ export class GameRenderer {
     if (dt > 0) this._adaptQuality(dt);
     const gm = this.gm;
     if (gm) {
-      const rec = gm.stage.get('recStudio');
+      const rec = gm.stage.get('recPulse');
       const lightsOut = gm.house.lightsOut;
+      const wind = gm.stage.get('wind');
+      this.stageView.windBoost = wind ? wind.phase === 'warn' : false;
       this.stageView.update(dt, { beat, lightsOut, rec: rec ? rec.visual : null });
       if (this.stageView.recSign && rec) this.stageView.recSign.material.opacity = rec.state === 'rec' ? 0.7 + Math.sin(this.t * 8) * 0.3 : 0.25;
 

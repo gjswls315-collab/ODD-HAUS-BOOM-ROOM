@@ -32,11 +32,13 @@ export const GAME_CONFIG = {
   },
 
   trap: {
-    battleTime: 4.0, // Solo Battle: Sound Capsule 유지 후 탈락
-    teamTime: 6.0, // Team Mode: 구출 가능 시간
-    trappedMoveSpeed: 0.75, // 캡슐 안에서 천천히 굴러감 (칸/초)
-    enemyTouchPops: true, // 상대가 캡슐을 터치하면 즉시 탈락
-    rescueInvulnerable: 1.4,
+    // GDD v3: 약 4초 포획 → 구출 / FINISH / TIMEOUT
+    battleTime: 4.0, // Solo Battle: 4초 후 자동 탈락
+    teamTime: 4.0, // Team Mode: 4초 안에 팀원 구출
+    trappedMoveSpeed: 0, // 초기 프로토타입: Capsule 은 셀에 고정
+    pushCapsuleByWave: false, // (추후) Sound Wave 방향으로 1칸 밀리는 고급 규칙
+    enemyTouchPops: true, // 상대가 캡슐을 터치하면 즉시 탈락 (FINISH)
+    rescueInvulnerable: 1.0, // 구출 / NEEDLE 탈출 후 무적
     shieldInvulnerable: 1.0,
     popGraceTime: 0.35, // 갇힌 직후 바로 터지지 않는 유예
   },

@@ -1,5 +1,5 @@
 // LP LIBRARY Stage Hazard — Rolling LP
-// 지정된 통로(lane)를 대형 LP 가 굴러가며 플레이어를 옆 칸으로 밀어내고, 아이템을 쓸어내며, 폭탄을 터뜨린다.
+// 지정된 행(lane)을 대형 LP 가 굴러가며 상자를 부수고, 플레이어를 옆 칸으로 밀어내고, 아이템을 쓸어내며, 폭탄을 터뜨린다.
 // 사전에 lane 경고 표시 (warnTime).
 export class RollingLp {
   constructor(gm, cfg) {
@@ -62,7 +62,15 @@ export class RollingLp {
     const { gm } = this;
     const y = this.lane;
     if (x <= 0 || x >= gm.grid.width - 1) return false;
-    if (gm.grid.isSolid(x, y)) return false;
+    // 상자(BREAKABLE)는 부수며 지나가고, SOLID 가구에서 멈춘다
+    if (gm.grid.waveInteraction(x, y) === 'destroy') {
+      const before = gm.grid.destroyBreakable(x, y);
+      if (before) {
+        gm.emit('blockDestroyed', { x, y, prop: before.prop, group: before.group, by: 'rollingLp' });
+        gm.stage.onBreakableDestroyed(x, y, before);
+        gm.items.rollDrop(x, y);
+      }
+    } else if (gm.grid.isSolid(x, y)) return false;
 
     for (const it of gm.items.items.filter((i) => i.x === x && i.y === y)) {
       gm.items._remove(it);
@@ -95,7 +103,7 @@ export class RollingLp {
     if (this.phase === 'idle') return [];
     const { grid } = this.gm;
     const cells = [];
-    for (let x = 1; x < grid.width - 1; x++) if (grid.isWalkable(x, this.lane)) cells.push({ x, y: this.lane });
+    for (let x = 1; x < grid.width - 1; x++) if (grid.waveInteraction(x, this.lane) !== 'block') cells.push({ x, y: this.lane });
     return [
       {
         kind: 'lane',

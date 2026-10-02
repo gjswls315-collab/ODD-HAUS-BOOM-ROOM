@@ -26,8 +26,11 @@ export class PlayerController {
 
     this.stats = new CharacterStats(this.def);
     // 아이템의 일시 효과 — 기본 Stats 와 분리 (ItemModifier)
-    this.modifiers = { speedBonus: 0, speedBonusTime: 0 };
-    this.heldItem = null; // { type, charges }
+    //   ROLLER SKATES: 일정 시간 SPEED 를 캐릭터 MAX + 1 레벨로 고정
+    this.modifiers = { speedOverride: 0, speedOverrideTime: 0 };
+    // 공용 능력 (그 판 동안 유지) — KICK / GLOVE / REMOTE. 캐릭터 전용 능력 아님
+    this.abilities = { kick: false, glove: false, remote: false };
+    this.heldItem = null; // 소모형 1칸: { type } — SHIELD / NEEDLE / ROLLER SKATES
 
     this.x = spawn.x;
     this.y = spawn.y;
@@ -66,7 +69,8 @@ export class PlayerController {
     return this.stats.current.wave;
   }
   get speedLevel() {
-    return Math.min(this.stats.current.speed + this.modifiers.speedBonus, GAME_CONFIG.speedAbsoluteCapLevel);
+    const base = this.modifiers.speedOverrideTime > 0 ? Math.max(this.modifiers.speedOverride, this.stats.current.speed) : this.stats.current.speed;
+    return Math.min(base, GAME_CONFIG.speedAbsoluteCapLevel);
   }
   get moveSpeed() {
     return speedLevelToCellsPerSecond(this.speedLevel);
@@ -94,12 +98,12 @@ export class PlayerController {
     this.stateTime += dt;
     if (this.invulnerable > 0) this.invulnerable = Math.max(0, this.invulnerable - dt);
     if (this.dash.cooldown > 0) this.dash.cooldown = Math.max(0, this.dash.cooldown - dt);
-    if (this.modifiers.speedBonusTime > 0) {
-      this.modifiers.speedBonusTime -= dt;
-      if (this.modifiers.speedBonusTime <= 0) {
-        this.modifiers.speedBonusTime = 0;
-        this.modifiers.speedBonus = 0;
-        gm.emit('modifierEnd', { playerId: this.id, modifier: 'speedShoes' });
+    if (this.modifiers.speedOverrideTime > 0) {
+      this.modifiers.speedOverrideTime -= dt;
+      if (this.modifiers.speedOverrideTime <= 0) {
+        this.modifiers.speedOverrideTime = 0;
+        this.modifiers.speedOverride = 0;
+        gm.emit('modifierEnd', { playerId: this.id, modifier: 'rollerSkates' });
       }
     }
     if (this.actionTimer > 0) this.actionTimer = Math.max(0, this.actionTimer - dt);
@@ -123,7 +127,9 @@ export class PlayerController {
 
     if (this.state === S.TRAPPED) {
       this.trap.time += dt;
-      if (intent.dir) {
+      // NEEDLE 보유 시 아이템 키로 직접 탈출
+      if (intent.item && gm.items.useItemKey(this)) return;
+      if (intent.dir && GAME_CONFIG.trap.trappedMoveSpeed > 0) {
         this.facing = intent.dir;
         this.moveAlong(intent.dir, GAME_CONFIG.trap.trappedMoveSpeed * dt, gm);
       }
@@ -156,7 +162,7 @@ export class PlayerController {
     // ── 특수 아이템 사용 (공통 ItemManager 가 처리) ──
     if (intent.item) {
       if (intent.dir) this.facing = intent.dir;
-      if (gm.items.useHeld(this)) {
+      if (gm.items.useItemKey(this)) {
         this.actionTimer = GAME_CONFIG.actionAnimTime;
         this.setState(S.USE_ITEM);
       }
@@ -175,12 +181,26 @@ export class PlayerController {
     this.moving = moved;
     this._checkCellChange(gm);
 
+    // ── KICK: Bomb 에 몸이 닿은 채로 밀면 진행 방향으로 걷어참 ──
+    if (this.abilities.kick && intent.dir && this.dash.time <= 0) this._tryKick(intent.dir, gm);
+
     // ── 상태 결정 ──
     if (this.actionTimer > 0 && (this.state === S.PLACE_BOMB || this.state === S.USE_ITEM)) return;
     if (this.state === S.RESCUED) return;
     if (this.dash.time > 0) this.setState(S.DASH);
     else if (moved) this.setState(S.MOVE);
     else this.setState(S.IDLE);
+  }
+
+  _tryKick(dirName, gm) {
+    const d = DIRS[dirName];
+    const bomb = gm.bombs.at(this.cellX + d.x, this.cellY + d.y);
+    if (!bomb || bomb.motion || bomb.passable.has(this.id)) return;
+    // 칸 중앙까지 붙어 있고 옆으로 크게 어긋나지 않았을 때만
+    const along = d.x !== 0 ? (this.cellX - this.x) * d.x : (this.cellY - this.y) * d.y;
+    const off = d.x !== 0 ? Math.abs(this.y - this.cellY) : Math.abs(this.x - this.cellX);
+    if (along > 0.08 || off > 0.3) return;
+    if (gm.bombs.kick(bomb, dirName)) gm.emit('itemUsed', { playerId: this.id, itemType: 'kick' });
   }
 
   _checkCellChange(gm) {
@@ -274,6 +294,7 @@ export class PlayerController {
       state: this.state,
       stats: this.stats.snapshot(),
       heldItem: this.heldItem ? { ...this.heldItem } : null,
+      abilities: { ...this.abilities },
       activeBombs: this.activeBombs,
     };
   }

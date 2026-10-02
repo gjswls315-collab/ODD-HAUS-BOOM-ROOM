@@ -62,6 +62,7 @@ export class SoundWaveManager {
     const ends = { up: 'open', down: 'open', left: 'open', right: 'open' };
     const toDestroy = [];
     const chained = [];
+    const touched = []; // Wave 가 닿았지만 막힌 SOLID 칸 (스위치 장비 등)
 
     if (includeCenter) cells.push({ x: x0, y: y0 });
     for (const dir of dirs) {
@@ -72,6 +73,7 @@ export class SoundWaveManager {
         const inter = grid.waveInteraction(x, y);
         if (inter === 'block') {
           ends[dir] = 'block';
+          touched.push({ x, y });
           break;
         }
         cells.push({ x, y });
@@ -131,6 +133,7 @@ export class SoundWaveManager {
       });
       gm.stage.onWaveCell(c.x, c.y, source);
     }
+    for (const c of touched) gm.stage.onWaveTouch(c.x, c.y, source);
     // 즉시 판정 (같은 틱)
     this.applyHits();
     return { explosion, cells };

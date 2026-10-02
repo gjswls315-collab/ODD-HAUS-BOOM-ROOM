@@ -15,56 +15,71 @@ describe('Items — shared by everyone, separate from base stats', () => {
     }
   });
 
-  it('special item goes to the held slot; new one replaces it', () => {
+  it('GDD v3: 10 items (3 growth + 7 special), drop ratio 30/30/30/10', () => {
+    expect(Object.keys(ITEM_TYPES).length).toBe(10);
+    expect(Object.values(ITEM_TYPES).filter((d) => d.kind === 'stat').length).toBe(3);
+    const w = DROP_TABLES.standard.weights;
+    const total = Object.values(w).reduce((a, b) => a + b, 0);
+    expect(w.speedUp / total).toBeCloseTo(0.3, 2);
+    expect(w.bombUp / total).toBeCloseTo(0.3, 2);
+    expect(w.waveUp / total).toBeCloseTo(0.3, 2);
+  });
+
+  it('held slot (shield / needle / skates): a new one replaces it; abilities stack', () => {
     const gm = makeGame();
     const p = gm.players.get(0);
     placeAt(gm, p, 3, 3);
+    gm.items.spawn('needle', 3, 3);
+    gm.step(DT, {});
+    expect(p.heldItem).toEqual({ type: 'needle' });
+    gm.items.spawn('shield', 3, 3);
+    gm.step(DT, {});
+    expect(p.heldItem.type).toBe('shield');
     gm.items.spawn('kick', 3, 3);
     gm.step(DT, {});
-    expect(p.heldItem).toEqual({ type: 'kick', charges: 3 });
-    gm.items.spawn('remote', 3, 3);
+    gm.items.spawn('glove', 3, 3);
     gm.step(DT, {});
-    expect(p.heldItem.type).toBe('remote');
+    expect(p.abilities).toMatchObject({ kick: true, glove: true });
+    expect(p.heldItem.type).toBe('shield');
   });
 
-  it('SPEED SHOES boosts speed temporarily without touching CharacterStats', () => {
-    const gm = makeGame();
+  it('ROLLER SKATES: SPEED becomes character MAX + 1 for a while, stats untouched', () => {
+    const gm = makeGame({ chars: ['picker', 'vin'] });
     const p = gm.players.get(0);
     placeAt(gm, p, 3, 3);
-    gm.items.spawn('speedShoes', 3, 3);
+    gm.items.spawn('rollerSkates', 3, 3);
     gm.step(DT, {});
-    const base = p.speedLevel;
     press(gm, 0, 'item');
-    expect(p.stats.current.speed).toBe(3);
-    expect(p.speedLevel).toBe(base + ITEM_TYPES.speedShoes.speedBonus);
+    expect(p.stats.current.speed).toBe(4);
+    expect(p.speedLevel).toBe(6); // PICKER MAX 5 → 6
     expect(p.heldItem).toBeNull();
-    run(gm, ITEM_TYPES.speedShoes.duration + 0.1, {});
-    expect(p.speedLevel).toBe(base);
+    run(gm, ITEM_TYPES.rollerSkates.duration + 0.1, {});
+    expect(p.speedLevel).toBe(4);
   });
 
-  it('KICK slides a bomb until it hits an obstacle', () => {
+  it('KICK: touching a Beat Bomb sends it sliding until it hits an obstacle', () => {
     const gm = makeGame();
     const p = gm.players.get(0);
     placeAt(gm, p, 2, 3);
+    gm.items.spawn('kick', 2, 3);
+    gm.step(DT, {});
+    expect(p.abilities.kick).toBe(true);
     press(gm, 0, 'bomb');
-    gm.items.spawn('kick', 1, 3);
-    run(gm, 0.3, { 0: { dir: 'left' } });
-    expect(p.heldItem?.type).toBe('kick');
-    // 오른쪽을 바라보고 앞의 폭탄을 찬다
-    p.facing = 'right';
-    press(gm, 0, 'item');
-    expect(p.heldItem.charges).toBe(2);
-    run(gm, 1.5, {});
+    // 폭탄에서 왼쪽으로 빠져나온 뒤 다시 오른쪽으로 밀기
+    run(gm, 0.4, { 0: { dir: 'left' } });
+    expect(p.cellX).toBe(1);
+    run(gm, 0.6, { 0: { dir: 'right' } });
+    run(gm, 1.0, {});
     const b = gm.bombs.bombs[0];
     expect(b.x).toBe(11); // 벽 앞까지
     expect(b.y).toBe(3);
   });
 
-  it('THROW sends a bomb a few cells away', () => {
+  it('GLOVE: E next to a bomb lifts and throws it forward', () => {
     const gm = makeGame();
     const p = gm.players.get(0);
     placeAt(gm, p, 2, 3);
-    gm.items.spawn('throw', 2, 3);
+    gm.items.spawn('glove', 2, 3);
     gm.step(DT, {});
     press(gm, 0, 'bomb');
     p.facing = 'right';
@@ -73,6 +88,32 @@ describe('Items — shared by everyone, separate from base stats', () => {
     const b = gm.bombs.bombs[0];
     expect(b.x).toBe(2 + GAME_CONFIG.bomb.throwDistance);
     expect(b.flying).toBe(false);
+  });
+
+  it('NEEDLE: a trapped player escapes with the item key (+ short invulnerability)', () => {
+    const gm = makeGame();
+    const p = gm.players.get(0);
+    placeAt(gm, p, 3, 3);
+    gm.items.spawn('needle', 3, 3);
+    gm.step(DT, {});
+    trapBy(gm, p, 1);
+    run(gm, 0.5, {});
+    expect(p.state).toBe('TRAPPED');
+    press(gm, 0, 'item');
+    expect(p.state).toBe('RESCUED');
+    expect(p.heldItem).toBeNull();
+    expect(p.invulnerable).toBeGreaterThan(0);
+    expect(gm.events.some((e) => e.type === 'playerRescued' && e.method === 'needle')).toBe(true);
+  });
+
+  it('Sound Capsule stays fixed on its cell (prototype rule)', () => {
+    const gm = makeGame();
+    const p = gm.players.get(0);
+    placeAt(gm, p, 3, 3);
+    trapBy(gm, p, 1);
+    run(gm, 1, { 0: { dir: 'right' } });
+    expect(p.x).toBe(3);
+    expect(p.y).toBe(3);
   });
 
   it('REMOTE detonates my oldest bomb right away', () => {

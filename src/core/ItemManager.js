@@ -7,7 +7,8 @@ import { DIRS } from './constants.js';
 //   - BREAKABLE 파괴 시 드랍 테이블(config)로 드랍
 //   - 자동 획득
 //   - stat 아이템 → CharacterStats.increase (캐릭터 max 를 넘지 않음)
-//   - special 아이템 → Held Item 슬롯 1칸, E 키로 사용 (누구나 동일)
+//   - ability 아이템 → 그 판 동안 유지 (KICK / GLOVE / REMOTE)
+//   - held 아이템 → 소모형 1칸 (SHIELD 자동 / NEEDLE / ROLLER SKATES), E 키 (누구나 동일)
 // ─────────────────────────────────────────────────────────────
 export class ItemManager {
   constructor(gm, dropTable) {
@@ -85,8 +86,14 @@ export class ItemManager {
       });
       return;
     }
-    if (def.kind === 'special') {
-      player.heldItem = { type, charges: def.charges };
+    if (def.kind === 'ability') {
+      const had = player.abilities[type];
+      player.abilities[type] = true;
+      this.gm.emit('itemPicked', { playerId: player.id, itemType: type, itemId: item?.id, ability: true, had });
+      return;
+    }
+    if (def.kind === 'held') {
+      player.heldItem = { type };
       this.gm.emit('itemPicked', { playerId: player.id, itemType: type, itemId: item?.id, held: true });
       return;
     }
@@ -97,25 +104,40 @@ export class ItemManager {
     }
   }
 
-  // E 키 — 보유한 특수 아이템 사용. 성공 시 true
-  useHeld(player) {
+  // 아이템 키(E) — 모든 캐릭터 동일한 우선순위. 무언가 했으면 true
+  //   ① 갇힘 + NEEDLE → 탈출  ② GLOVE + 손 닿는 Bomb → 던지기
+  //   ③ ROLLER SKATES → 가속  ④ REMOTE → 내 가장 오래된 Bomb 발동
+  useItemKey(player) {
+    const { gm } = this;
     const held = player.heldItem;
-    if (!held || !player.isActive) return false;
-    const def = ITEM_TYPES[held.type];
-    const effect = ITEM_EFFECTS[held.type];
-    if (def.passive || !effect) {
-      this.gm.emit('itemPassive', { playerId: player.id, itemType: held.type });
+    if (player.isTrapped) {
+      if (held?.type === 'needle') {
+        player.heldItem = null;
+        gm.players.rescue(player, null, 'needle');
+        gm.emit('itemUsed', { playerId: player.id, itemType: 'needle' });
+        return true;
+      }
       return false;
     }
-    const ok = effect(player, this.gm, def);
-    if (!ok) {
-      this.gm.emit('itemFailed', { playerId: player.id, itemType: held.type });
-      return false;
+    if (!player.isActive) return false;
+
+    if (player.abilities.glove && ITEM_EFFECTS.glove(player, gm)) {
+      gm.emit('itemUsed', { playerId: player.id, itemType: 'glove' });
+      return true;
     }
-    held.charges -= 1;
-    this.gm.emit('itemUsed', { playerId: player.id, itemType: held.type, charges: held.charges });
-    if (held.charges <= 0) player.heldItem = null;
-    return true;
+    if (held?.type === 'rollerSkates') {
+      ITEM_EFFECTS.rollerSkates(player, gm, ITEM_TYPES.rollerSkates);
+      player.heldItem = null;
+      gm.emit('itemUsed', { playerId: player.id, itemType: 'rollerSkates' });
+      return true;
+    }
+    if (player.abilities.remote && ITEM_EFFECTS.remote(player, gm)) {
+      gm.emit('itemUsed', { playerId: player.id, itemType: 'remote' });
+      return true;
+    }
+    if (held) gm.emit('itemPassive', { playerId: player.id, itemType: held.type });
+    else gm.emit('itemFailed', { playerId: player.id });
+    return false;
   }
 }
 
@@ -129,16 +151,13 @@ function bombInReach(player, gm) {
 
 // 특수 아이템 효과 — 캐릭터 기본 Stats 와 분리된 공용 효과
 export const ITEM_EFFECTS = {
-  kick(player, gm) {
-    const bomb = bombInReach(player, gm);
-    if (!bomb) return false;
-    return gm.bombs.kick(bomb, player.facing);
-  },
-  throw(player, gm) {
+  // GLOVE / THROW: 인접 Bomb 을 들어 앞으로 던짐
+  glove(player, gm) {
     const bomb = bombInReach(player, gm);
     if (!bomb) return false;
     return gm.bombs.throwBomb(bomb, player.facing);
   },
+  // REMOTE: 자신의 가장 오래된 Beat Bomb 을 즉시 발동
   remote(player, gm) {
     const own = gm.bombs.bombs.filter((b) => b.ownerId === player.id && !b.flying);
     if (own.length === 0) return false;
@@ -147,10 +166,11 @@ export const ITEM_EFFECTS = {
     gm.emit('remoteDetonate', { playerId: player.id, bombId: own[0].id });
     return true;
   },
-  speedShoes(player, gm, def) {
-    player.modifiers.speedBonus = def.speedBonus;
-    player.modifiers.speedBonusTime = def.duration;
-    gm.emit('modifierStart', { playerId: player.id, modifier: 'speedShoes', duration: def.duration });
+  // ROLLER SKATES: 일정 시간 SPEED = 캐릭터 MAX + overMax
+  rollerSkates(player, gm, def) {
+    player.modifiers.speedOverride = player.stats.max.speed + def.overMax;
+    player.modifiers.speedOverrideTime = def.duration;
+    gm.emit('modifierStart', { playerId: player.id, modifier: 'rollerSkates', duration: def.duration, level: player.modifiers.speedOverride });
     return true;
   },
 };

@@ -99,11 +99,12 @@ export class PlayerManager {
     this.gm.emit('playerTrapped', { playerId: player.id, byId, source });
   }
 
-  rescue(player, rescuer) {
+  // 팀원 접촉(RESCUE) 또는 NEEDLE 로 해방 → 약 1초 무적
+  rescue(player, rescuer, method = 'team') {
     player.trap = null;
     player.invulnerable = GAME_CONFIG.trap.rescueInvulnerable;
     player.setState(S.RESCUED);
-    this.gm.emit('playerRescued', { playerId: player.id, byId: rescuer ? rescuer.id : null });
+    this.gm.emit('playerRescued', { playerId: player.id, byId: rescuer ? rescuer.id : null, method });
   }
 
   eliminate(player, byId, reason) {

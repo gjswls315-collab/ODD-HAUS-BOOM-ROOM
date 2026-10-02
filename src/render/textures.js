@@ -507,7 +507,7 @@ export function drawIcon(g, type) {
       g.fill();
       break;
     }
-    case 'throw': {
+    case 'glove': {
       g.fillStyle = W;
       g.beginPath();
       g.ellipse(-20, 20, 44, 52, -0.3, 0, Math.PI * 2);
@@ -562,7 +562,7 @@ export function drawIcon(g, type) {
       g.stroke();
       break;
     }
-    case 'speedShoes': {
+    case 'rollerSkates': {
       g.fillStyle = W;
       g.beginPath();
       g.moveTo(-60, 10);
@@ -579,6 +579,30 @@ export function drawIcon(g, type) {
         g.arc(x, 44, 16, 0, Math.PI * 2);
         g.fill();
       }
+      break;
+    }
+    case 'needle': {
+      // 캡슐을 터뜨리는 바늘 + 버블
+      g.strokeStyle = 'rgba(255,255,255,0.85)';
+      g.lineWidth = 6;
+      g.beginPath();
+      g.arc(-22, 22, 46, 0, Math.PI * 2);
+      g.stroke();
+      g.save();
+      g.rotate(-Math.PI / 4);
+      g.fillStyle = W;
+      g.fillRect(-8, -80, 16, 110);
+      g.beginPath();
+      g.moveTo(-8, 30);
+      g.lineTo(8, 30);
+      g.lineTo(0, 78);
+      g.closePath();
+      g.fill();
+      g.fillStyle = '#c8102e';
+      g.beginPath();
+      g.arc(0, -86, 16, 0, Math.PI * 2);
+      g.fill();
+      g.restore();
       break;
     }
     case 'randomBox': {

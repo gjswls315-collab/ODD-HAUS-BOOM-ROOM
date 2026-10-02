@@ -256,6 +256,10 @@ export class BotBrain {
 
     if (p.isTrapped) {
       this.path = null;
+      if (p.heldItem?.type === 'needle') {
+        res.item = true;
+        return res;
+      }
       const ally = gm.players.list.find((o) => o !== p && o.isActive && gm.mode.areAllies(o, p));
       if (ally) {
         const dx = ally.x - p.x;
@@ -304,22 +308,19 @@ export class BotBrain {
       }
     }
 
-    // ── 아이템 사용 ──
-    if (p.heldItem) {
-      const t = p.heldItem.type;
-      if (t === 'speedShoes') res.item = true;
-      if (t === 'remote') {
-        for (const b of gm.bombs.bombs.filter((b) => b.ownerId === p.id && !b.flying)) {
-          const { cells } = blastCells(gm, b.x, b.y, b.range, b);
-          const hitsEnemy = cells.some((c) => gm.players.list.some((o) => o.isActive && !gm.mode.areAllies(o, p) && o.cellX === c.x && o.cellY === c.y));
-          const hitsMe = cells.some((c) => c.x === p.cellX && c.y === p.cellY);
-          if (hitsEnemy && !hitsMe) res.item = true;
-        }
+    // ── 아이템 사용 (사람과 같은 E 키 규칙) ──
+    if (p.heldItem?.type === 'rollerSkates') res.item = true;
+    if (p.abilities.remote) {
+      for (const b of gm.bombs.bombs.filter((b) => b.ownerId === p.id && !b.flying)) {
+        const { cells } = blastCells(gm, b.x, b.y, b.range, b);
+        const hitsEnemy = cells.some((c) => gm.players.list.some((o) => o.isActive && !gm.mode.areAllies(o, p) && o.cellX === c.x && o.cellY === c.y));
+        const hitsMe = cells.some((c) => c.x === p.cellX && c.y === p.cellY);
+        if (hitsEnemy && !hitsMe) res.item = true;
       }
-      if ((t === 'kick' || t === 'throw') && this._enemyInLine(gm, p, 6)) {
-        const d = DIRS[p.facing];
-        if (gm.bombs.at(p.cellX + d.x, p.cellY + d.y) || gm.bombs.at(p.cellX, p.cellY)) res.item = true;
-      }
+    }
+    if (p.abilities.glove && this._enemyInLine(gm, p, 6)) {
+      const d = DIRS[p.facing];
+      if (gm.bombs.at(p.cellX + d.x, p.cellY + d.y) || gm.bombs.at(p.cellX, p.cellY)) res.item = true;
     }
 
     const bfs = this._bfs(gm, p, danger, true);

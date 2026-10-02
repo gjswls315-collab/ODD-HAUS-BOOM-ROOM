@@ -1,12 +1,16 @@
 // ─────────────────────────────────────────────────────────────
-// ITEM CONFIG — 아이템 정의 / 드랍 테이블
+// ITEM CONFIG — 아이템 10종 (GDD v3): 기본 성장 3종 + 공용 특수 7종
 //
-// 아이템 효과는 캐릭터 기본 Stats 와 분리된다.
-//   - stat    : 기본 성장 아이템. CharacterStats 를 +1 (캐릭터 max 까지만)
-//   - special : 누구나 획득 가능한 특수 아이템. Held Item 슬롯 1칸에 보관 → E 키로 사용
-//               (shield 는 보유 중 자동 발동)
-//   - random  : 획득 즉시 pool 에서 무작위 아이템으로 변환
-// 캐릭터 전용 아이템 / 캐릭터 전용 효과는 없다.
+// 아이템 효과는 캐릭터 기본 Stats 와 분리된다. 캐릭터 전용 아이템은 없다.
+//   kind 'stat'    : 기본 성장. CharacterStats +1 (캐릭터 MAX 를 넘지 않음)
+//   kind 'ability' : 획득하면 그 판 동안 유지되는 공용 능력 (KICK / GLOVE / REMOTE)
+//   kind 'held'    : 보유 슬롯 1칸 소모형 (SHIELD 자동 / NEEDLE / ROLLER SKATES). 새로 먹으면 교체
+//   kind 'random'  : 획득 즉시 pool 에서 무작위 아이템으로 변환
+//
+// 아이템 키(E) 하나로 처리 — 우선순위:
+//   ① 갇힘 + NEEDLE → 탈출  ② GLOVE + 손 닿는 Bomb → 던지기
+//   ③ ROLLER SKATES → 가속  ④ REMOTE → 내 가장 오래된 Bomb 즉시 발동
+// KICK 은 키 없이 Bomb 에 몸이 닿으면 진행 방향으로 걷어찬다.
 // ─────────────────────────────────────────────────────────────
 
 export const ITEM_TYPES = {
@@ -16,8 +20,8 @@ export const ITEM_TYPES = {
     stat: 'speed',
     amount: 1,
     label: 'SPEED UP',
-    desc: '이동속도 +1',
-    color: '#54c7ff',
+    desc: '이동속도 +1 (캐릭터 MAX 까지)',
+    color: '#ff5a4f',
   },
   bombUp: {
     id: 'bombUp',
@@ -25,7 +29,7 @@ export const ITEM_TYPES = {
     stat: 'bomb',
     amount: 1,
     label: 'BOMB UP',
-    desc: '동시 설치 수 +1',
+    desc: '동시 설치 가능 Beat Bomb +1',
     color: '#ffc55c',
   },
   waveUp: {
@@ -35,105 +39,111 @@ export const ITEM_TYPES = {
     amount: 1,
     label: 'WAVE UP',
     desc: 'Sound Wave 거리 +1',
-    color: '#6ee3a3',
+    color: '#54c7ff',
   },
 
   kick: {
     id: 'kick',
-    kind: 'special',
-    charges: 3,
+    kind: 'ability',
     label: 'KICK',
-    desc: '앞의 Beat Bomb 을 한 방향으로 걷어찬다',
+    desc: 'Bomb 에 몸이 닿으면 진행 방향으로 걷어참 (벽에서 정지)',
     color: '#ff7136',
   },
-  throw: {
-    id: 'throw',
-    kind: 'special',
-    charges: 3,
-    label: 'THROW',
-    desc: 'Beat Bomb 을 짧은 거리 던진다',
+  glove: {
+    id: 'glove',
+    kind: 'ability',
+    label: 'GLOVE',
+    desc: 'Bomb 옆에서 E — 들어 올려 앞으로 던짐',
     color: '#f2e7d0',
-  },
-  shield: {
-    id: 'shield',
-    kind: 'special',
-    charges: 1,
-    passive: true,
-    label: 'SHIELD',
-    desc: 'Sound Wave 1회 자동 방어',
-    color: '#7f9bff',
   },
   remote: {
     id: 'remote',
-    kind: 'special',
-    charges: 3,
+    kind: 'ability',
     label: 'REMOTE',
-    desc: '내 Beat Bomb 하나를 원하는 타이밍에 발동',
+    desc: 'E — 내 가장 오래된 Bomb 을 원하는 순간 발동',
     color: '#ff5a8a',
   },
-  speedShoes: {
-    id: 'speedShoes',
-    kind: 'special',
-    charges: 1,
-    duration: 6,
-    speedBonus: 2, // 기본 Stats 와 별개의 일시 보너스 (캐릭터 max 무시, 절대 상한만 적용)
-    label: 'SPEED SHOES',
-    desc: '일정 시간 이동속도 크게 증가',
+  shield: {
+    id: 'shield',
+    kind: 'held',
+    passive: true,
+    label: 'SHIELD',
+    desc: 'Sound Wave 1회 자동 방어 후 깨짐',
+    color: '#7f9bff',
+  },
+  needle: {
+    id: 'needle',
+    kind: 'held',
+    label: 'NEEDLE',
+    desc: 'Sound Capsule 에 갇혔을 때 E — 즉시 탈출',
+    color: '#d9f0ff',
+  },
+  rollerSkates: {
+    id: 'rollerSkates',
+    kind: 'held',
+    duration: 6, // 5~8초 권장
+    overMax: 1, // SPEED 를 캐릭터 MAX 보다 1 높게 (예: PICKER 5 → 6)
+    label: 'ROLLER SKATES',
+    desc: 'E — 일정 시간 SPEED 가 캐릭터 MAX + 1',
     color: '#b46bff',
   },
 
   randomBox: {
     id: 'randomBox',
     kind: 'random',
-    label: 'RANDOM BOX',
-    desc: '무작위 아이템',
+    label: 'RANDOM LP BOX',
+    desc: 'Speed / Bomb / Wave / Shield / Kick 중 하나',
     color: '#ffd166',
   },
 };
 
-// RANDOM BOX 변환 가중치
+// RANDOM LP BOX 변환 가중치
 export const RANDOM_BOX_POOL = {
-  speedUp: 2,
-  bombUp: 2,
-  waveUp: 2,
-  kick: 1,
-  throw: 1,
+  speedUp: 1,
+  bombUp: 1,
+  waveUp: 1,
   shield: 1,
-  remote: 1,
-  speedShoes: 1,
+  kick: 1,
 };
 
 // BREAKABLE 오브젝트 파괴 시 드랍 테이블
+// 권장 초기 비율: Speed 30% · Bomb 30% · Wave 30% · Special 10%
 export const DROP_TABLES = {
   standard: {
-    dropChance: 0.46,
+    dropChance: 0.55,
     weights: {
-      speedUp: 25,
-      bombUp: 25,
-      waveUp: 25,
-      kick: 5,
-      throw: 4,
-      shield: 5,
-      remote: 3,
-      speedShoes: 4,
-      randomBox: 4,
+      speedUp: 30,
+      bombUp: 30,
+      waveUp: 30,
+      // Special 10%
+      kick: 2,
+      glove: 1.5,
+      remote: 1.5,
+      shield: 1.5,
+      needle: 1.5,
+      rollerSkates: 1,
+      randomBox: 1,
     },
   },
   // ITEM MODE (확장 예정) — 특수 아이템 비중 증가
   itemMode: {
-    dropChance: 0.62,
+    dropChance: 0.7,
     weights: {
-      speedUp: 16,
-      bombUp: 16,
-      waveUp: 16,
-      kick: 10,
-      throw: 9,
-      shield: 10,
+      speedUp: 18,
+      bombUp: 18,
+      waveUp: 18,
+      kick: 7,
+      glove: 7,
       remote: 7,
-      speedShoes: 9,
-      randomBox: 7,
+      shield: 7,
+      needle: 7,
+      rollerSkates: 6,
+      randomBox: 5,
     },
   },
 };
 
 export const STAT_ITEM_FOR = { speed: 'speedUp', bomb: 'bombUp', wave: 'waveUp' };
+export const ABILITY_IDS = Object.values(ITEM_TYPES)
+  .filter((d) => d.kind === 'ability')
+  .map((d) => d.id);

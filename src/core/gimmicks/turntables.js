@@ -1,6 +1,7 @@
-// DJ BOOTH — Turntable Rotation
-// 턴테이블(3x3) 바깥 링 8칸이 일정 박자마다 시계 방향으로 한 칸 회전.
-// 링 위의 BREAKABLE / Beat Bomb / 아이템 / 플레이어가 함께 이동한다 (그리드 규칙 유지).
+// DJ BOOTH — Turntable Rotation (GDD v3: G = Turntable Zone)
+// 턴테이블 둘레 8칸이 일정 박자마다 시계 방향으로 한 칸 회전 → 길 구조가 바뀐다.
+// 링 위의 SOLID 가구 / BREAKABLE / Beat Bomb / 아이템이 함께 돌고, 서 있는 플레이어도 함께 실려 간다.
+// (내용물 전체가 같이 도는 순열이라 벽이 사람 위로 겹치지 않는다)
 const RING = [
   [-1, -1],
   [0, -1],
@@ -24,9 +25,9 @@ export class Turntables {
   init() {
     const { grid } = this.gm;
     for (const c of grid.cells) {
-      if (c.prop !== 'turntable') continue;
+      if (!(c.turntable || c.prop === 'turntable')) continue;
       const ring = RING.map(([dx, dy]) => ({ x: c.x + dx, y: c.y + dy }));
-      if (ring.every((p) => grid.get(p.x, p.y)?.ring)) {
+      if (ring.every((p) => grid.inBounds(p.x, p.y) && !grid.get(p.x, p.y).border)) {
         this.decks.push({ x: c.x, y: c.y, ring, rotations: 0 });
       }
     }

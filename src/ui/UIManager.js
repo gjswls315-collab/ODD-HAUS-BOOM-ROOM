@@ -178,11 +178,13 @@ export class UIManager {
               <li><b>이동</b> — 모두 같은 4방향 이동</li>
               <li><b>Beat Bomb 설치</b> — 내 칸에 설치, 카운트 후 Sound Wave 발생</li>
               <li><b>Sound Wave</b> — 상하좌우 십자. 가구(SOLID)에서 멈추고, 상자(BREAKABLE)는 부수고 멈춤. 다른 폭탄을 만나면 연쇄 폭발</li>
-              <li><b>포획</b> — Wave 에 맞으면 Sound Capsule 에 갇힘. 상대가 건드리면 POP! 팀원은 구출 가능</li>
+              <li><b>포획</b> — Wave 에 맞으면 약 4초 동안 Sound Capsule 에 갇힘. 팀원이 닿으면 구출(+1초 무적), 상대가 닿으면 FINISH, NEEDLE 이 있으면 E 로 탈출</li>
               <li><b>성장</b> — 상자에서 나온 아이템으로 SPEED · BOMB · WAVE 상승 (캐릭터 MAX 까지)</li>
             </ol>
             <h3>캐릭터 차이 = 능력치뿐</h3>
-            <p class="hint">캐릭터 전용 스킬은 없습니다. 캐릭터마다 SPEED · BOMB · WAVE 의 <b>시작값</b>과 <b>최대값</b>만 다릅니다.</p>
+            <p class="hint">캐릭터 전용 스킬은 없습니다. 캐릭터마다 SPEED · BOMB · WAVE 의 <b>시작값</b>과 <b>최대값</b>(5칸 척도)만 다릅니다.</p>
+            <h3>아이템 키 E (하나로 모두)</h3>
+            <p class="hint">갇혔을 때 NEEDLE 탈출 → GLOVE 로 옆 Bomb 던지기 → ROLLER SKATES 가속 → REMOTE 로 가장 오래된 Bomb 발동. KICK 은 Bomb 에 몸이 닿으면 자동. KICK·GLOVE·REMOTE 는 획득하면 그 판 동안 유지됩니다.</p>
           </div>
           <div>
             <h3>조작 (모든 캐릭터 공통)</h3>
@@ -280,7 +282,7 @@ export class UIManager {
           <div class="cursors">${cursors}</div>
           <img src="${this.portraits[id] || ''}" alt="${c.name}">
           <div class="nm">${c.name}</div>
-          <div class="tg">${c.tagline}</div>
+          <div class="tg">${c.tagline}${c.label ? ` · ${c.label}` : ''}</div>
           ${locked ? '<div class="lockmsg">🔒 플레이 불가 — House Event 전용<br>경기 중 MR. ODD IS COMING!</div>' : `<div class="stats">${STAT_KEYS.map((k) => startMaxLine(c, k)).join('')}</div>`}
         </div>`);
         card.addEventListener('click', () => {
@@ -537,9 +539,10 @@ export class UIManager {
       const st = p.stats.current;
       const mx = p.stats.max;
       const held = p.heldItem;
-      const status = p.state === 'ELIMINATED' ? 'OUT' : p.state === 'TRAPPED' ? `TRAPPED ${Math.max(0, p.trap.maxTime - p.trap.time).toFixed(1)}` : p.state === 'VICTORY' ? 'WIN!' : p.modifiers.speedBonusTime > 0 ? 'BOOST' : 'ACTIVE';
+      const status = p.state === 'ELIMINATED' ? 'OUT' : p.state === 'TRAPPED' ? `TRAPPED ${Math.max(0, p.trap.maxTime - p.trap.time).toFixed(1)}` : p.state === 'VICTORY' ? 'WIN!' : p.modifiers.speedOverrideTime > 0 ? 'SKATES' : 'ACTIVE';
       const avail = Math.max(0, p.maxBombs - p.activeBombs);
-      const key = `${status}|${st.speed}|${st.bomb}|${st.wave}|${avail}|${held ? held.type + held.charges : ''}`;
+      const abil = ['kick', 'glove', 'remote'].filter((k) => p.abilities[k]);
+      const key = `${status}|${st.speed}|${st.bomb}|${st.wave}|${avail}|${held ? held.type : ''}|${abil.join()}`;
       if (key === card.key) return;
       card.key = key;
       card.el.classList.toggle('trapped', p.state === 'TRAPPED');
@@ -548,8 +551,9 @@ export class UIManager {
       card.el.querySelector('.rows').innerHTML =
         `<div class="hrow"><span>SPD</span>${hudPips(st.speed, mx.speed)}</div>` +
         `<div class="hrow"><span>BOMB</span>${hudPips(st.bomb, mx.bomb)}</div>` +
-        `<div class="hrow"><span>WAVE</span>${hudPips(st.wave, mx.wave)}</div>`;
-      card.el.querySelector('.held').innerHTML = held ? `<img src="${this.icons[held.type]}" alt="${held.type}" title="${ITEM_TYPES[held.type].label}"><i>${ITEM_TYPES[held.type].passive ? 'AUTO' : held.charges}</i>` : '';
+        `<div class="hrow"><span>WAVE</span>${hudPips(st.wave, mx.wave)}</div>` +
+        (abil.length ? `<div class="abil">${abil.map((k) => `<img src="${this.icons[k]}" alt="${k}" title="${ITEM_TYPES[k].label}">`).join('')}</div>` : '');
+      card.el.querySelector('.held').innerHTML = held ? `<img src="${this.icons[held.type]}" alt="${held.type}" title="${ITEM_TYPES[held.type].label}"><i>${ITEM_TYPES[held.type].passive ? 'AUTO' : 'E'}</i>` : '';
     });
   }
 
@@ -665,6 +669,7 @@ export function drawMinimap(canvas, stage) {
   const cw = canvas.width / W;
   const ch = canvas.height / H;
   const legend = legendFor(stage);
+  let spawnNo = 0;
   g.fillStyle = stage.theme.floor.a;
   g.fillRect(0, 0, canvas.width, canvas.height);
   for (let y = 0; y < H; y++) {
@@ -672,7 +677,9 @@ export function drawMinimap(canvas, stage) {
       const c = rows[y][x];
       const d = legend[c];
       let col = null;
-      if (c === '#') col = '#1c242e';
+      const border = x === 0 || y === 0 || x === W - 1 || y === H - 1;
+      if (c === '#' && border) col = '#1c242e';
+      else if (c === 'G') col = '#b46bff';
       else if (d.type === CELL.SOLID) col = '#6b4a33';
       else if (d.type === CELL.BREAKABLE) col = d.routeCrate ? '#ffd166' : '#c99a5e';
       else if (d.type === CELL.GIMMICK) col = '#b46bff';
@@ -683,7 +690,8 @@ export function drawMinimap(canvas, stage) {
         g.fillRect(x * cw + 0.5, y * ch + 0.5, cw - 1, ch - 1);
       }
       if (d.spawn !== undefined) {
-        g.fillStyle = GAME_CONFIG.playerColors[d.spawn];
+        const si = d.spawn === 'auto' ? spawnNo++ : d.spawn;
+        g.fillStyle = GAME_CONFIG.playerColors[si % 4];
         g.beginPath();
         g.arc((x + 0.5) * cw, (y + 0.5) * ch, cw * 0.32, 0, Math.PI * 2);
         g.fill();

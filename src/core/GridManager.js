@@ -23,69 +23,111 @@ export class GridManager {
     }
   }
 
-  // stage config 의 map 문자열 → 그리드 (rng 로 randomFill)
+  // stage config 의 map 문자열 → 그리드
+  //   바깥 테두리 # → 벽 / 안쪽 # → stage.solids 규칙으로 가구 / B → stage.breakables 소품
+  //   S → 읽는 순서대로 스폰 번호 / overrides → 특정 좌표만 다른 셀
   static fromStage(stageDef, rng) {
     const legend = legendFor(stageDef);
     const rows = stageDef.map;
     const grid = new GridManager(rows[0].length, rows.length);
+    const W = grid.width;
+    const H = grid.height;
     const spawnSlots = [];
-    const charAt = (x, y) => rows[y][x];
+    let autoSpawn = 0;
+    const overrides = new Map((stageDef.overrides || []).map((o) => [`${o.at[0]},${o.at[1]}`, o.def]));
+    const breakables = stageDef.breakables || ['box'];
+    const isBorder = (x, y) => x === 0 || y === 0 || x === W - 1 || y === H - 1;
+    let pickIdx = 0;
+    const pickBreakable = () => (rng ? rng.pick(breakables) : breakables[pickIdx++ % breakables.length]);
 
-    for (let y = 0; y < grid.height; y++) {
-      for (let x = 0; x < grid.width; x++) {
-        const ch = charAt(x, y);
-        const def = legend[ch];
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const ch = rows[y][x];
+        let def = overrides.get(`${x},${y}`) || legend[ch];
         if (!def) throw new Error(`Stage ${stageDef.id}: unknown map char '${ch}' at ${x},${y}`);
+        if (def.solid && isBorder(x, y)) def = { type: CELL.SOLID, prop: 'wall' };
         const cell = makeCell(x, y, def);
         cell.char = ch;
-        grid.cells[y * grid.width + x] = cell;
-        if (def.spawn !== undefined) spawnSlots[def.spawn] = { x, y };
+        cell.border = isBorder(x, y);
+        cell.interiorSolid = !!def.solid && !cell.border && !def.prop;
+        if (def.breakable && !def.prop) cell.prop = pickBreakable();
+        grid.cells[y * W + x] = cell;
+        if (def.spawn === 'auto') spawnSlots[autoSpawn++] = { x, y };
+        else if (def.spawn !== undefined) spawnSlots[def.spawn] = { x, y };
       }
     }
     grid.spawns = spawnSlots;
+    grid._assignInteriorSolids(stageDef.solids || {});
 
-    // 여러 칸 가구 그룹화 (같은 문자 + 인접)
-    for (let y = 0; y < grid.height; y++) {
-      for (let x = 0; x < grid.width; x++) {
+    // 그 외 prop 셀 그룹화 (같은 문자·같은 prop 이 붙어 있으면 한 덩어리 — 예: GGG Old Audio Machine)
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
         const cell = grid.get(x, y);
         if (cell.group || !cell.prop || MERGE_EXCLUDE.has(cell.prop)) continue;
         if (cell.type === CELL.BREAKABLE || cell.type === CELL.GIMMICK) {
           grid._newGroup(cell.prop, [cell], { movable: false });
           continue;
         }
-        // flood fill same char
-        const members = [];
-        const stack = [cell];
-        cell.group = -1;
-        while (stack.length) {
-          const c = stack.pop();
-          members.push(c);
-          for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-            const n = grid.get(c.x + dx, c.y + dy);
-            if (n && !n.group && n.char === cell.char && n.type === cell.type) {
-              n.group = -1;
-              stack.push(n);
-            }
-          }
-        }
+        const members = grid._flood(cell, (n) => n.char === cell.char && n.type === cell.type && n.prop === cell.prop);
         grid._newGroup(cell.prop, members, { movable: !!cell.movable });
       }
     }
 
-    // randomFill
+    // randomFill (',' 셀 — v3 맵은 사용하지 않지만 확장용으로 유지)
     const fill = stageDef.randomFill;
     if (fill && rng) {
       for (const cell of grid.cells) {
         if (!cell.randomFill || cell.type !== CELL.EMPTY) continue;
         const nearSpawn = grid.spawns.some((s) => Math.abs(s.x - cell.x) + Math.abs(s.y - cell.y) <= 1);
         if (nearSpawn) continue;
-        if (rng.next() < fill.density) {
-          grid.setBreakable(cell.x, cell.y, rng.pick(fill.props), true);
-        }
+        if (rng.next() < fill.density) grid.setBreakable(cell.x, cell.y, rng.pick(fill.props || breakables), true);
       }
     }
     grid.version = 0;
     return grid;
+  }
+
+  _flood(start, same) {
+    const members = [];
+    const stack = [start];
+    start.group = -1;
+    while (stack.length) {
+      const c = stack.pop();
+      members.push(c);
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const n = this.get(c.x + dx, c.y + dy);
+        if (n && !n.group && same(n)) {
+          n.group = -1;
+          stack.push(n);
+        }
+      }
+    }
+    return members;
+  }
+
+  // 안쪽 # 덩어리 → 가구 prop (소파 / 선반 / 캐비닛 ...)
+  _assignInteriorSolids(cfg) {
+    const byLength = cfg.byLength || {};
+    const rowCounters = {};
+    for (let y = 0; y < this.height; y++) {
+      for (let x = 0; x < this.width; x++) {
+        const cell = this.get(x, y);
+        if (!cell.interiorSolid || cell.group) continue;
+        const members = cfg.merge === false ? ((cell.group = -1), [cell]) : this._flood(cell, (n) => n.interiorSolid);
+        const touchesBorder = members.some((c) => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => this.get(c.x + dx, c.y + dy)?.border));
+        let spec = touchesBorder && cfg.borderAttached ? cfg.borderAttached : byLength[members.length] ?? byLength.default ?? 'cabinet';
+        if (Array.isArray(spec)) {
+          const k = (rowCounters[y] = (rowCounters[y] ?? -1) + 1);
+          spec = spec[k % spec.length];
+        }
+        if (typeof spec === 'string') spec = { prop: spec, movable: false };
+        for (const c of members) {
+          c.prop = spec.prop;
+          c.movable = !!spec.movable;
+        }
+        this._newGroup(spec.prop, members, { movable: !!spec.movable });
+      }
+    }
   }
 
   _newGroup(prop, members, { movable }) {
@@ -265,11 +307,14 @@ function makeCell(x, y, def) {
     amp: def.amp || null,
     light: !!def.light,
     movable: !!def.movable,
+    turntable: !!def.turntable,
+    border: false,
+    interiorSolid: false,
     gimmick: def.gimmick
       ? {
           kind: def.gimmick,
           open: def.open !== undefined ? def.open : undefined,
-          solid: def.gimmick === 'secretShelf' ? true : def.gimmick === 'door' ? !def.open : false,
+          solid: def.gimmick === 'secretShelf' || def.gimmick === 'gate' ? true : def.gimmick === 'door' ? !def.open : false,
         }
       : null,
   };

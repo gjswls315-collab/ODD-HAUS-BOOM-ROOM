@@ -10,10 +10,9 @@
 // BOMB  : 동시에 설치 가능한 Beat Bomb 개수
 // WAVE  : Sound Wave 가 상하좌우로 퍼지는 칸 수
 //
-// 수치는 초기 밸런스 가안이다. 밸런스 조정은 이 파일만 수정하면 된다.
-// (GDD v2 HTML 표와 일부 다름 — 구현 마스터 프롬프트 6절 수치를 우선 적용.
-//  GDD v2 표: VIN bomb max 4 / PICKER wave 1→4 / A.A. wave 1→4 /
-//  LOCKE 3→4,1→4,2→5 / REX wave max 6 / BULLY wave 2→5)
+// 수치는 초기 밸런스 가안이다 (GDD v3 FINAL CORE RULES). 밸런스 조정은 이 파일만 수정하면 된다.
+// 5칸 척도. MAX 총합을 맞추지 않고 장단점을 명확하게:
+//   PICKER 는 처음부터 빠르지만 폭탄·파동 상한이 낮고, REX 는 느리지만 후반 WAVE 가 길다.
 // ─────────────────────────────────────────────────────────────
 
 export const STAT_KEYS = ['speed', 'bomb', 'wave'];
@@ -23,9 +22,10 @@ export const CHARACTERS = {
     id: 'vin',
     name: 'VIN',
     tagline: 'BALANCED',
-    role: 'Balance Type',
-    speed: { start: 3, max: 5 },
-    bomb: { start: 1, max: 3 },
+    label: '균형형',
+    note: '초반과 후반 모두 안정적인 기준 캐릭터.',
+    speed: { start: 3, max: 4 },
+    bomb: { start: 1, max: 4 },
     wave: { start: 2, max: 5 },
   },
 
@@ -33,17 +33,19 @@ export const CHARACTERS = {
     id: 'picker',
     name: 'PICKER',
     tagline: 'FAST START',
-    role: 'Speed Type',
+    label: '스피드형',
+    note: '처음부터 빠르지만 설치 수와 파동 상한은 낮다.',
     speed: { start: 4, max: 5 },
     bomb: { start: 1, max: 3 },
-    wave: { start: 2, max: 4 },
+    wave: { start: 1, max: 4 },
   },
 
   aa: {
     id: 'aa',
     name: 'A.A.',
     tagline: 'MORE BOMBS',
-    role: 'Bomb Type',
+    label: '폭탄 물량형',
+    note: '초반부터 2개 설치. 후반에는 가장 많은 Beat Bomb 운용.',
     speed: { start: 2, max: 4 },
     bomb: { start: 2, max: 5 },
     wave: { start: 2, max: 4 },
@@ -53,19 +55,21 @@ export const CHARACTERS = {
     id: 'locke',
     name: 'LOCKE',
     tagline: 'STEADY',
-    role: 'Stable Balance Type',
+    label: '안정형 올라운더',
+    note: '초반부터 Bomb 이 2개라 운영이 편한 올라운더.',
     speed: { start: 3, max: 4 },
     bomb: { start: 2, max: 4 },
-    wave: { start: 3, max: 4 },
+    wave: { start: 2, max: 4 },
   },
 
   rex: {
     id: 'rex',
     name: 'REX',
     tagline: 'LONG WAVE',
-    role: 'Wave Type',
-    speed: { start: 2, max: 4 },
-    bomb: { start: 1, max: 3 },
+    label: '장거리 파동형',
+    note: '느리지만 시작 Wave 부터 길고 후반 장악력이 강하다.',
+    speed: { start: 2, max: 3 },
+    bomb: { start: 1, max: 4 },
     wave: { start: 3, max: 5 },
   },
 
@@ -73,20 +77,22 @@ export const CHARACTERS = {
     id: 'buddy',
     name: 'BUDDY',
     tagline: 'EASY START',
-    role: 'Beginner Friendly',
-    speed: { start: 4, max: 5 },
-    bomb: { start: 1, max: 4 },
-    wave: { start: 2, max: 4 },
+    label: '초보 친화 기동형',
+    note: 'Bomb 2개로 시작하고 속도가 크게 성장해 입문자에게 편하다.',
+    speed: { start: 3, max: 5 },
+    bomb: { start: 2, max: 4 },
+    wave: { start: 2, max: 3 },
   },
 
   bully: {
     id: 'bully',
     name: 'BULLY',
     tagline: 'AGGRESSIVE',
-    role: 'Aggressive Speed Type',
+    label: '공격적 고점형',
+    note: '빠른 움직임과 긴 후반 Wave 로 상대를 압박한다.',
     speed: { start: 4, max: 5 },
     bomb: { start: 1, max: 3 },
-    wave: { start: 3, max: 4 },
+    wave: { start: 2, max: 5 },
   },
 };
 

@@ -29,20 +29,28 @@ describe('Character config (stats only, no skills)', () => {
     }
   });
 
-  it('matches the balance draft from the implementation prompt', () => {
-    expect(CHARACTERS.vin.speed).toEqual({ start: 3, max: 5 });
-    expect(CHARACTERS.picker.speed).toEqual({ start: 4, max: 5 });
-    expect(CHARACTERS.aa.bomb).toEqual({ start: 2, max: 5 });
-    expect(CHARACTERS.rex.wave).toEqual({ start: 3, max: 5 });
-    expect(CHARACTERS.locke).toMatchObject({ speed: { start: 3, max: 4 }, bomb: { start: 2, max: 4 }, wave: { start: 3, max: 4 } });
+  it('matches the GDD v3 START / MAX table', () => {
+    const table = {
+      vin: [3, 4, 1, 4, 2, 5],
+      picker: [4, 5, 1, 3, 1, 4],
+      aa: [2, 4, 2, 5, 2, 4],
+      locke: [3, 4, 2, 4, 2, 4],
+      rex: [2, 3, 1, 4, 3, 5],
+      buddy: [3, 5, 2, 4, 2, 3],
+      bully: [4, 5, 1, 3, 2, 5],
+    };
+    for (const [id, v] of Object.entries(table)) {
+      const c = CHARACTERS[id];
+      expect([c.speed.start, c.speed.max, c.bomb.start, c.bomb.max, c.wave.start, c.wave.max], id).toEqual(v);
+      for (const k of STAT_KEYS) expect(c[k].max).toBeLessThanOrEqual(5); // 5칸 척도
+    }
   });
 
   it('CharacterStats.increase never exceeds max', () => {
     const s = new CharacterStats(CHARACTERS.vin);
-    expect(s.increase('speed')).toBe(1); // 4
-    expect(s.increase('speed')).toBe(1); // 5
-    expect(s.increase('speed')).toBe(0); // capped
-    expect(s.current.speed).toBe(5);
+    expect(s.increase('speed')).toBe(1); // 3 → 4
+    expect(s.increase('speed')).toBe(0); // VIN SPEED MAX 4
+    expect(s.current.speed).toBe(4);
     expect(s.isMaxed('speed')).toBe(true);
   });
 });
@@ -65,12 +73,12 @@ describe('Section 39 — test criteria', () => {
     feed('speedUp', 1);
     expect(vin.stats.current.speed).toBe(4);
     feed('speedUp', 5);
-    expect(vin.stats.current.speed).toBe(5); // VIN max 5
+    expect(vin.stats.current.speed).toBe(4); // VIN SPEED MAX 4
 
     feed('bombUp', 6);
-    expect(vin.stats.current.bomb).toBe(3); // VIN max 3
+    expect(vin.stats.current.bomb).toBe(4); // VIN BOMB MAX 4
     feed('waveUp', 6);
-    expect(vin.stats.current.wave).toBe(5); // VIN max 5
+    expect(vin.stats.current.wave).toBe(5); // VIN WAVE MAX 5
 
     const maxedEvents = gm.events.filter((e) => e.type === 'itemPicked' && e.maxed);
     expect(maxedEvents.length).toBeGreaterThan(0);

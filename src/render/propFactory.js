@@ -252,15 +252,16 @@ const BUILDERS = {
   },
 
   // ── DJ BOOTH ───────────────────────────────────
-  turntable() {
+  turntable({ seed = 0 }) {
     const g = group();
-    g.add(mesh(rbox(2.92, 0.08, 2.92, 0.06), mat('#1a1a20', { rough: 0.45, metal: 0.3 }), { p: [0, 0.04, 0], cast: false }));
-    const platter = group([], { name: 'platter' });
-    platter.add(mesh(cyl(1.4, 1.4, 0.05, 64), [mat('#8a8a96', { metal: 0.8, rough: 0.25 }), mat('#fff', { map: grooveTexture('#b46bff', 512), rough: 0.25, emissive: '#2a1440', ei: 0.6 }), mat('#111')], { p: [0, 0.105, 0], cast: false }));
-    platter.add(mesh(torus(1.42, 0.025, 6, 64), basic('#d6a8ff', { toneMapped: false }), { p: [0, 0.12, 0], r: [Math.PI / 2, 0, 0], cast: false }));
+    const lift = (seed % 3) * 0.004; // 겹치는 덱 z-fighting 방지
+    g.add(mesh(cyl(1.42, 1.42, 0.06, 48), mat('#1a1a20', { rough: 0.45, metal: 0.3 }), { p: [0, 0.03 + lift, 0], cast: false }));
+    const platter = group([], { name: 'platter', p: [0, lift, 0] });
+    platter.add(mesh(cyl(1.3, 1.3, 0.04, 64), [mat('#8a8a96', { metal: 0.8, rough: 0.25 }), mat('#fff', { map: grooveTexture('#b46bff', 512), rough: 0.25, emissive: '#2a1440', ei: 0.6 }), mat('#111')], { p: [0, 0.08, 0], cast: false }));
+    platter.add(mesh(torus(1.32, 0.022, 6, 64), basic('#d6a8ff', { toneMapped: false }), { p: [0, 0.1, 0], r: [Math.PI / 2, 0, 0], cast: false }));
     for (let i = 0; i < 16; i++) {
       const a = (i / 16) * Math.PI * 2;
-      platter.add(mesh(box(0.07, 0.015, 0.07), basic(i % 2 ? '#4fb8ff' : '#b46bff', { toneMapped: false }), { p: [Math.cos(a) * 1.46, 0.09, Math.sin(a) * 1.46], cast: false }));
+      platter.add(mesh(box(0.06, 0.012, 0.06), basic(i % 2 ? '#4fb8ff' : '#b46bff', { toneMapped: false }), { p: [Math.cos(a) * 1.37, 0.065, Math.sin(a) * 1.37], cast: false }));
     }
     g.add(platter);
     g.add(mesh(cyl(0.3, 0.34, 0.42, 24), mat('#24242c', { metal: 0.6, rough: 0.3 }), { p: [0, 0.31, 0] }));
@@ -381,16 +382,109 @@ const BUILDERS = {
     return g;
   },
 
-  oldAudio() {
+  // LOCKED ROOM 중앙 GGG — 여러 칸 폭의 Old Audio Machine (오픈릴 + 진공관 콘솔)
+  oldAudio({ w = 1 }) {
+    const W = w - 0.1;
     const g = group();
-    g.add(mesh(rbox(0.8, 0.72, 0.56, 0.05), mat('#6b4a2e', { rough: 0.6 }), { p: [0, 0.36, 0] }));
-    g.add(mesh(box(0.66, 0.36, 0.02), mat('#d8c9a8', { rough: 0.9 }), { p: [0, 0.44, 0.285] }));
-    for (const x of [-0.17, 0.17]) {
-      g.add(mesh(cyl(0.13, 0.13, 0.03, 24), mat('#2a2a30', { metal: 0.5 }), { p: [x, 0.46, 0.3], r: [Math.PI / 2, 0, 0] }));
-      g.add(mesh(cyl(0.04, 0.04, 0.05, 10), mat(METAL, { metal: 0.8 }), { p: [x, 0.46, 0.31], r: [Math.PI / 2, 0, 0] }));
+    g.add(mesh(rbox(W, 0.72, 0.62, 0.05), mat('#6b4a2e', { rough: 0.6 }), { p: [0, 0.36, 0] }));
+    g.add(mesh(box(W - 0.14, 0.36, 0.02), mat('#d8c9a8', { rough: 0.9 }), { p: [0, 0.44, 0.315] }));
+    const reels = Math.max(2, Math.round(w * 2));
+    for (let i = 0; i < reels; i++) {
+      const x = -W / 2 + 0.25 + i * ((W - 0.5) / (reels - 1));
+      g.add(mesh(cyl(0.13, 0.13, 0.03, 24), mat('#2a2a30', { metal: 0.5 }), { p: [x, 0.46, 0.33], r: [Math.PI / 2, 0, 0] }));
+      g.add(mesh(cyl(0.04, 0.04, 0.05, 10), mat(METAL, { metal: 0.8 }), { p: [x, 0.46, 0.34], r: [Math.PI / 2, 0, 0] }));
     }
-    for (let i = 0; i < 4; i++) g.add(mesh(cyl(0.03, 0.03, 0.04, 8), mat('#d9a441', { metal: 0.7 }), { p: [-0.22 + i * 0.15, 0.15, 0.3], r: [Math.PI / 2, 0, 0] }));
-    g.add(mesh(box(0.1, 0.04, 0.02), basic('#ffb35c', { toneMapped: false }), { p: [0.28, 0.15, 0.29], cast: false }));
+    const knobs = Math.round(w * 4);
+    for (let i = 0; i < knobs; i++) g.add(mesh(cyl(0.03, 0.03, 0.04, 8), mat('#d9a441', { metal: 0.7 }), { p: [-W / 2 + 0.15 + i * ((W - 0.3) / Math.max(1, knobs - 1)), 0.15, 0.33], r: [Math.PI / 2, 0, 0] }));
+    for (let i = 0; i < Math.max(1, w); i++) g.add(mesh(cyl(0.05, 0.05, 0.16, 10), mat('#ffcf8a', { emissive: '#ff9a3c', ei: 1.2, transparent: true, opacity: 0.85 }), { p: [-W / 2 + 0.4 + i * 0.9, 0.8, -0.1], cast: false }));
+    g.add(mesh(box(0.1, 0.04, 0.02), basic('#ffb35c', { toneMapped: false }), { p: [W / 2 - 0.15, 0.15, 0.32], cast: false }));
+    return g;
+  },
+
+  // LOUNGE — 작은 원형 사이드 테이블 + 빈티지 라디오
+  sideTable({ seed }) {
+    const g = group();
+    g.add(mesh(cyl(0.34, 0.34, 0.06, 24), mat(WOOD, { rough: 0.45 }), { p: [0, 0.5, 0] }));
+    g.add(mesh(cyl(0.05, 0.07, 0.48, 10), mat(WOOD_DARK), { p: [0, 0.25, 0] }));
+    g.add(mesh(cyl(0.22, 0.24, 0.03, 20), mat(WOOD_DARK), { p: [0, 0.015, 0] }));
+    const radio = group([], { p: [0, 0.53, 0], r: [0, (seed % 3) * 0.3 - 0.3, 0] });
+    radio.add(mesh(rbox(0.36, 0.22, 0.18, 0.04), mat(seed % 2 ? '#c94f3d' : '#2f6e7a', { rough: 0.5 }), { p: [0, 0.11, 0] }));
+    radio.add(mesh(box(0.2, 0.12, 0.02), mat('#e8dcc0'), { p: [-0.05, 0.12, 0.092], cast: false }));
+    radio.add(mesh(cyl(0.035, 0.035, 0.03, 10), mat('#d9a441', { metal: 0.7 }), { p: [0.12, 0.12, 0.095], r: [Math.PI / 2, 0, 0] }));
+    g.add(radio);
+    return g;
+  },
+
+  // LP LIBRARY 중앙 G — 청음 스테이션 (턴테이블 + 헤드폰)
+  recordPlayer() {
+    const g = group();
+    g.add(mesh(rbox(0.86, 0.5, 0.72, 0.05), mat('#5a3620', { rough: 0.6 }), { p: [0, 0.25, 0] }));
+    g.add(mesh(rbox(0.78, 0.08, 0.64, 0.03), mat('#2a2a30', { metal: 0.4, rough: 0.4 }), { p: [0, 0.54, 0] }));
+    const groove = mat('#ffffff', { map: grooveTexture('#d9a441'), rough: 0.3 });
+    g.add(mesh(cyl(0.26, 0.26, 0.02, 32), [mat('#111'), groove, groove], { p: [-0.08, 0.6, 0], name: 'disc' }));
+    g.add(mesh(box(0.03, 0.03, 0.32), mat(METAL, { metal: 0.9, rough: 0.2 }), { p: [0.26, 0.62, -0.02], r: [0, 0.4, 0] }));
+    g.add(mesh(torus(0.13, 0.025, 8, 20, Math.PI), mat('#1d1d24'), { p: [0.24, 0.6, 0.2], r: [Math.PI / 2, 0, 0.3] }));
+    g.add(mesh(sphere(0.06, 10, 8), mat('#c8102e'), { p: [0.11, 0.6, 0.2] }));
+    g.add(mesh(sphere(0.06, 10, 8), mat('#c8102e'), { p: [0.37, 0.6, 0.2] }));
+    return g;
+  },
+
+  // STUDIO — 1칸짜리 믹서 랙
+  mixerUnit() {
+    const g = group();
+    g.add(mesh(rbox(0.8, 0.5, 0.66, 0.05), mat('#26262e', { rough: 0.5 }), { p: [0, 0.25, 0] }));
+    const top = group([], { p: [0, 0.53, 0.02], r: [-0.25, 0, 0] });
+    top.add(mesh(rbox(0.72, 0.06, 0.56, 0.02), mat('#33343e', { rough: 0.4, metal: 0.3 })));
+    for (let i = 0; i < 5; i++) {
+      const x = -0.28 + i * 0.14;
+      top.add(mesh(cyl(0.025, 0.025, 0.05, 8), mat(i === 2 ? '#ff5a4f' : '#d8dde5', { rough: 0.3 }), { p: [x, 0.05, -0.15] }));
+      top.add(mesh(box(0.05, 0.04, 0.04), mat('#ededed'), { p: [x, 0.06, 0.08 + (i % 3) * 0.04] }));
+    }
+    for (let i = 0; i < 6; i++) top.add(mesh(box(0.04, 0.02, 0.02), basic(i < 4 ? '#6ee3a3' : '#ff5a4f', { toneMapped: false }), { p: [-0.14 + i * 0.055, 0.04, -0.24], cast: false }));
+    g.add(top);
+    return g;
+  },
+
+  // STUDIO G — 공용 스위치에 연결된 Amp 장비. 올라오면 벽, 바닥으로 내려가면 통로
+  ampGate() {
+    const g = group();
+    g.add(mesh(cyl(0.44, 0.46, 0.04, 28), mat('#2b2b33', { metal: 0.5, rough: 0.4 }), { p: [0, 0.02, 0], cast: false }));
+    g.add(mesh(torus(0.45, 0.02, 6, 40), basic('#ff3b4f', { toneMapped: false }), { p: [0, 0.045, 0], r: [Math.PI / 2, 0, 0], name: 'gateRing', cast: false }));
+    const body = group([], { name: 'gateBody' });
+    body.add(mesh(rbox(0.8, 0.82, 0.7, 0.05), mat('#1d1d22', { rough: 0.7 }), { p: [0, 0.41, 0] }));
+    body.add(mesh(box(0.66, 0.5, 0.02), mat('#3a332a', { rough: 1 }), { p: [0, 0.38, 0.355] }));
+    body.add(mesh(cyl(0.18, 0.2, 0.03, 24), mat('#2a2a33', { metal: 0.3, rough: 0.4 }), { p: [0, 0.38, 0.37], r: [Math.PI / 2, 0, 0] }));
+    for (let i = 0; i < 5; i++) body.add(mesh(cyl(0.025, 0.025, 0.04, 8), mat('#d8c27a', { metal: 0.6 }), { p: [-0.24 + i * 0.12, 0.72, 0.36], r: [Math.PI / 2, 0, 0] }));
+    body.add(mesh(box(0.72, 0.05, 0.03), mat('#ff3b4f', { emissive: '#ff3b4f', ei: 0.6, unique: true }), { p: [0, 0.82, 0.34], name: 'ampLight', cast: false }));
+    g.add(body);
+    return g;
+  },
+
+  // TERRACE G — 바람 발생 장치 (대형 선풍기)
+  windFan() {
+    const g = group();
+    g.add(mesh(cyl(0.3, 0.36, 0.1, 20), mat('#3a3d44', { metal: 0.6, rough: 0.4 }), { p: [0, 0.05, 0] }));
+    g.add(mesh(cyl(0.05, 0.05, 0.45, 10), mat('#3a3d44', { metal: 0.6 }), { p: [0, 0.32, 0] }));
+    const head = group([], { p: [0, 0.68, 0], name: 'fanHead' });
+    head.add(mesh(torus(0.34, 0.025, 6, 32), mat('#d8dde5', { metal: 0.7, rough: 0.3 }), {}));
+    const blades = group([], { name: 'fanBlades' });
+    for (let i = 0; i < 4; i++) blades.add(mesh(box(0.28, 0.1, 0.02), mat('#bfe6ff', { rough: 0.3, transparent: true, opacity: 0.85 }), { p: [Math.cos((i * Math.PI) / 2) * 0.16, Math.sin((i * Math.PI) / 2) * 0.16, 0], r: [0, 0.3, (i * Math.PI) / 2] }));
+    blades.add(mesh(sphere(0.06, 10, 8), mat('#3a3d44', { metal: 0.6 })));
+    head.add(blades);
+    g.add(head);
+    return g;
+  },
+
+  // 테두리 벽에 붙어 있는 구조물 (벽 연장)
+  wallBlock({ w, d, theme }) {
+    const g = group();
+    const W = w - 0.04;
+    const D = d - 0.04;
+    const trim = new THREE.Color(theme.wallTrim || '#4a2c18');
+    g.add(mesh(rbox(W, 0.62, D, 0.05), mat(trim, { rough: 0.7 }), { p: [0, 0.31, 0] }));
+    g.add(mesh(rbox(W - 0.08, 0.04, D - 0.08, 0.015), mat(trim.clone().offsetHSL(0, 0, 0.06), { rough: 0.6 }), { p: [0, 0.64, 0] }));
+    // 얇은 장식 몰딩
+    g.add(mesh(box(W + 0.01, 0.03, D + 0.01), mat(theme.wallAccent || '#d9a441', { metal: 0.5, rough: 0.4 }), { p: [0, 0.5, 0], cast: false }));
     return g;
   },
 

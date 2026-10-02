@@ -1,6 +1,7 @@
 import { RouteCrates } from './gimmicks/routeCrates.js';
 import { RollingLp } from './gimmicks/rollingLp.js';
-import { RecStudio } from './gimmicks/recStudio.js';
+import { Gates } from './gimmicks/gates.js';
+import { RecPulse } from './gimmicks/recPulse.js';
 import { Turntables } from './gimmicks/turntables.js';
 import { SpeakerDrop } from './gimmicks/speakerDrop.js';
 import { Wind } from './gimmicks/wind.js';
@@ -10,7 +11,8 @@ import { Doors } from './gimmicks/doors.js';
 export const GIMMICK_REGISTRY = {
   routeCrates: RouteCrates,
   rollingLp: RollingLp,
-  recStudio: RecStudio,
+  gates: Gates,
+  recPulse: RecPulse,
   turntables: Turntables,
   speakerDrop: SpeakerDrop,
   wind: Wind,
@@ -45,6 +47,10 @@ export class StageManager {
 
   onWaveCell(x, y, source) {
     for (const g of this.gimmicks) g.onWaveCell?.(x, y, source);
+  }
+
+  onWaveTouch(x, y, source) {
+    for (const g of this.gimmicks) g.onWaveTouch?.(x, y, source);
   }
 
   onBreakableDestroyed(x, y, before) {

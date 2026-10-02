@@ -138,7 +138,7 @@ export class PlayerView {
     this.dashArc.material.opacity = dashReady ? 0.55 : 0.08;
     this.shield.visible = (p.heldItem?.type === 'shield' || p.invulnerable > 0) && !trapped;
     this.shield.material.opacity = p.invulnerable > 0 ? 0.25 + Math.sin(t * 20) * 0.1 : 0.12;
-    if (p.modifiers.speedBonusTime > 0) this.ringMesh.material.opacity = 0.6 + Math.sin(t * 20) * 0.4;
+    if (p.modifiers.speedOverrideTime > 0) this.ringMesh.material.opacity = 0.6 + Math.sin(t * 20) * 0.4;
     else this.ringMesh.material.opacity = 0.9;
   }
 

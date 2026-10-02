@@ -305,13 +305,18 @@ export class App {
           au.sfx('warn');
           break;
         case 'recOn':
-          ui.banner('● REC ON', { sub: '앰프 Sound Pulse 주의', color: '#ff3b4f' });
+          ui.banner('● REC', { sub: '올라온 장비 라인에 Sound Pulse', color: '#ff3b4f' });
+          au.sfx('warn');
           break;
         case 'doorsToggled':
           if (e.source !== 'houseEvent') ui.banner('DOORS!', { ms: 900, color: '#ffb35c' });
           break;
         case 'routeOpened':
           ui.banner('NEW ROUTE!', { ms: 1100, color: '#ffd166' });
+          break;
+        case 'gatesToggled':
+          ui.banner('SWITCH!', { sub: '장비가 오르내린다 — 벽 ↔ 통로', ms: 1100, color: '#ff3b4f' });
+          au.sfx('warn');
           break;
         case 'matchEnd':
           au.sfx('victory');

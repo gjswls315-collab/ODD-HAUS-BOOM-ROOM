@@ -4,7 +4,7 @@
 > ODD HAUS 캐릭터들이 모두 같은 규칙과 조작으로 경쟁하는 3D 쿼터뷰 파티 폭탄 게임.
 > 캐릭터 차이는 스킬이 아니라 **SPEED · BOMB · WAVE 의 시작값(start)과 최대값(max)** 뿐입니다.
 
-기획 기준: `ODD_HAUS_BOOM_ROOM_Interactive_GDD_v2.html` + 구현 마스터 프롬프트 (캐릭터 액티브 스킬 구조 폐기, 능력치 기반 룰).
+기획 기준: `ODD_HAUS_BOOM_ROOM_Interactive_GDD_v3.html` (V3 FINAL CORE RULES) + 구현 마스터 프롬프트 — 캐릭터 액티브 스킬 없음, 능력치·아이템·맵 전략 게임.
 
 ---
 
@@ -67,48 +67,69 @@ npm run build:single   # dist/boom-room-single.html — JS·CSS 를 한 파일�
 
 ---
 
-## 핵심 규칙 (GDD v2)
+## 핵심 규칙 (GDD v3)
+
+```
+CHARACTER = Start Stats + Max Stats
+ITEM      = Stat Up / Common Special Item
+COMBAT    = Beat Bomb → Sound Wave → Sound Capsule
+MAP       = 13×11 논리 격자 + 공용 기믹 / 이벤트
+```
 
 1. **이동** — 4방향, 모두 동일 (코너 보정 포함)
 2. **Beat Bomb** — `PLACE → COUNT → DROP → SOUND WAVE → RESULT`. 동시 설치 수 = BOMB
 3. **Sound Wave** — 상하좌우 십자, 거리 = 설치 시점 WAVE. SOLID 에서 정지, BREAKABLE 은 파괴 후 정지, 다른 Beat Bomb 은 Chain Reaction
-4. **포획** — Wave 에 맞으면 즉사가 아니라 **Sound Capsule** 에 갇힘 → 팀원이 구출 / 상대가 건드리면 POP(탈락) / 시간 초과 시 탈락
-5. **성장** — BREAKABLE 파괴 시 드랍되는 아이템으로 능력치 +1, **캐릭터 max 에서 정지**
+4. **Sound Capsule** — `ACTIVE → WAVE HIT → TRAPPED(약 4초) → RESCUE / FINISH / TIMEOUT`
+   - 팀원이 접촉 → 즉시 구출 + 약 1초 무적 / 적이 접촉 → FINISH(탈락) / 4초 경과 → 자동 탈락 / NEEDLE 보유 → E 로 탈출
+   - 초기 프로토타입 규칙대로 Capsule 은 셀에 고정 (Wave 방향 1칸 밀림은 `gameConfig.trap.pushCapsuleByWave` 자리만 마련)
+5. **성장** — BREAKABLE 파괴 시 드랍되는 아이템으로 능력치 +1, **캐릭터 MAX 에서 정지** (ROLLER SKATES 만 잠깐 MAX+1)
 
-### 캐릭터 능력치 (`src/config/characterConfig.js`, 초기 밸런스 가안)
+### 캐릭터 능력치 (`src/config/characterConfig.js`, 5칸 척도)
 
-| 캐릭터 | 성향 | SPEED | BOMB | WAVE |
+| 캐릭터 | SPEED | BOMB | WAVE | 성향 |
 | --- | --- | --- | --- | --- |
-| VIN | BALANCED | 3 → 5 | 1 → 3 | 2 → 5 |
-| PICKER | FAST START | 4 → 5 | 1 → 3 | 2 → 4 |
-| A.A. | MORE BOMBS | 2 → 4 | 2 → 5 | 2 → 4 |
-| LOCKE | STEADY | 3 → 4 | 2 → 4 | 3 → 4 |
-| REX | LONG WAVE | 2 → 4 | 1 → 3 | 3 → 5 |
-| BUDDY | EASY START | 4 → 5 | 1 → 4 | 2 → 4 |
-| BULLY | AGGRESSIVE | 4 → 5 | 1 → 3 | 3 → 4 |
-| MR. ODD | 플레이 불가 — House Event 전용 | – | – | – |
+| VIN | 3 → 4 | 1 → 4 | 2 → 5 | 가장 균형적인 기본형 |
+| PICKER | 4 → 5 | 1 → 3 | 1 → 4 | 초반부터 빠른 스피드형 |
+| A.A. | 2 → 4 | 2 → 5 | 2 → 4 | 폭탄을 많이 놓는 물량형 |
+| LOCKE | 3 → 4 | 2 → 4 | 2 → 4 | 안정적인 올라운더 |
+| REX | 2 → 3 | 1 → 4 | 3 → 5 | 느리지만 장거리 파동형 |
+| BUDDY | 3 → 5 | 2 → 4 | 2 → 3 | 초보자에게 편한 기동형 |
+| BULLY | 4 → 5 | 1 → 3 | 2 → 5 | 빠르고 공격적인 고점형 |
+| MR. ODD | – | – | – | 플레이 불가 / 맵 이벤트 |
 
-수치는 마스터 프롬프트 6절 값입니다. GDD v2 HTML 표와 다른 항목(VIN BOMB max 4 등)은 파일 상단 주석에 남겨 두었습니다.
-SPEED 레벨 → 실제 칸/초 변환은 `gameConfig.speedTable` 에서 조정합니다.
+MAX 총합은 맞추지 않고 장단점을 명확하게 했습니다. SPEED 레벨 → 실제 칸/초는 `gameConfig.speedTable` 에서 조정합니다.
+애니메이션은 캐릭터마다 다릅니다 (Beat Bomb 설치: PICKER 툭 던지기, REX 묵직하게, BUDDY 앞발로 등) — 판정은 동일.
 
-### 아이템 (`src/config/itemConfig.js`)
+### 아이템 10종 (`src/config/itemConfig.js`) — 드랍 Speed 30% · Bomb 30% · Wave 30% · Special 10%
 
-- 기본 성장: **SPEED UP / BOMB UP / WAVE UP** (+1, 캐릭터 max 까지)
-- 특수(누구나 획득, Held Item 1칸, `E` 사용): **KICK**(앞 폭탄 차기) · **THROW**(폭탄 던지기) · **SHIELD**(Wave 1회 자동 방어) · **REMOTE**(내 폭탄 원격 발동) · **SPEED SHOES**(일시 가속 — 기본 Stats 와 분리된 modifier) · **RANDOM BOX**
-- 드랍 확률/가중치는 `DROP_TABLES` 에서 관리
+| 아이템 | 종류 | 효과 |
+| --- | --- | --- |
+| SPEED UP / BOMB UP / WAVE UP | 기본 성장 | 해당 능력치 +1 (캐릭터 MAX 까지) |
+| KICK | 능력 (그 판 유지) | Bomb 에 몸이 닿으면 진행 방향으로 걷어참 → 벽에서 정지 |
+| GLOVE / THROW | 능력 | Bomb 옆에서 E — 들어 올려 앞으로 던짐 |
+| REMOTE | 능력 | E — 내 가장 오래된 Bomb 부터 즉시 발동 |
+| SHIELD | 보유 1칸 | Sound Wave 1회 자동 방어 후 깨짐 |
+| NEEDLE | 보유 1칸 | Sound Capsule 에 갇혔을 때 E — 즉시 탈출 |
+| ROLLER SKATES | 보유 1칸 | E — 6초간 SPEED = 캐릭터 MAX + 1 (예: PICKER 5 → 6) |
+| RANDOM LP BOX | 즉시 | Speed / Bomb / Wave / Shield / Kick 중 하나 |
 
-### 스테이지 6종 (`src/config/stageConfig.js`) — 모든 기믹은 공용
+아이템 키는 E 하나입니다. 우선순위: 갇힘+NEEDLE 탈출 → GLOVE 던지기 → ROLLER SKATES → REMOTE.
+KICK·GLOVE·REMOTE 를 "그 판 동안 유지되는 능력"으로 둔 것은 키 하나로 여러 특수 아이템을 함께 쓰기 위한 구현 결정입니다 (`itemConfig.js` 의 `kind` 로 변경 가능).
 
-| # | Stage | 공용 기믹 | Mr. ODD House Event |
+### 스테이지 6종 (`src/config/stageConfig.js`) — GDD v3 13×11 격자 그대로, 모든 기믹 공용
+
+`#` SOLID · `B` BREAKABLE · `.` 이동 · `S` SPAWN · `G` GIMMICK
+
+| # | Stage | G / 공용 기믹 | 이벤트 |
 | --- | --- | --- | --- |
-| 01 | LOUNGE (입문) | 소파·테이블 SOLID / LP박스·책 BREAKABLE | 소파 위치 이동 |
-| 02 | LP LIBRARY (미로) | 금색 Record Box 파괴 → 숨은 선반 열림(새 Route), **Rolling LP** 해저드(경고 후 통로 굴러감) | 상자 낙하 |
-| 03 | STUDIO (장비) | **REC 스위치**(밟거나 Wave 로 작동) → 앰프 Sound Pulse (발사 전 라인 경고) | 조명 OFF / 상자 낙하 |
-| 04 | DJ BOOTH (동적) | **턴테이블 링 회전**(링 위 상자·폭탄·아이템·플레이어 이동), **Speaker Drop**(카운트 가속) | 조명 OFF / 상자 낙하 |
-| 05 | TERRACE (개방) | **Wind** — 방향을 3초 전 표시 후 플레이어·아이템 한 칸 밀림 | String Light 암전 / 상자 낙하 |
-| 06 | LOCKED ROOM (고난도) | 레버로 모든 문 열림/닫힘 | 잦은 이벤트: 캐비닛 대이동 · 문 전환 · 암전 · 상자 낙하 |
+| 01 | LOUNGE (기본기) | 중앙 Floor Lamp. `###` = 소파(이동 가능), 단독 `#` = 커피테이블·사이드테이블·화분 | MR. ODD 가 소파를 밀어 통로 변경 |
+| 02 | LP LIBRARY (좁은 통로) | 중앙 청음 스테이션. 금색 Record Box 2개를 부수면 숨은 선반이 열려 새 경로 | 예고 후 대형 Rolling LP 가 한 행을 굴러가며 상자를 부수고 플레이어·아이템을 밀어냄 |
+| 03 | STUDIO (기계 기믹) | G = Amp 장비 4개. 아무 Wave 나 G 에 닿으면 장비가 오르내려 벽 ↔ 통로 전환 | REC 예고 후 올라와 있는 장비 라인에 Sound Pulse |
+| 04 | DJ BOOTH (움직이는 맵) | G = Turntable 6개. 일정 박자마다 둘레 8칸(벽·상자·폭탄·아이템)이 회전해 길 구조 변경 | Speaker Drop — 짧은 시간 Bomb 카운트 가속 |
+| 05 | TERRACE (개방형 + 긴 Wave) | G = 바람 장치. 벽이 적어 WAVE 가 긴 캐릭터가 유리 | Wind — 방향 예고 후 플레이어·아이템 한 칸 밀림 |
+| 06 | LOCKED ROOM (맵 변화) | 중앙 GGG = Old Audio Machine. 벽에 붙지 않은 가구 8개가 이동 가능 | MR. ODD 가 가구 2개씩 이동(. ↔ #) · 암전 · 상자 낙하 |
 
-맵은 ASCII 논리 그리드(`EMPTY / SOLID / BREAKABLE / GIMMICK / SPAWN / ITEM / HAZARD`)로 정의되며, 3D 메쉬(`src/render/propFactory.js`)는 그리드 규칙과 분리되어 있습니다.
+맵은 ASCII 논리 격자로 정의되고, `#` 를 어떤 가구로 보여줄지(`solids`)와 `G` 의 기믹은 스테이지별 설정입니다. 3D 메쉬(`src/render/propFactory.js`)는 그리드 규칙과 분리되어 있습니다.
 
 ### 게임 모드
 
@@ -142,7 +163,7 @@ src/
 │   ├── StageManager.js         스테이지 기믹 레지스트리
 │   ├── HouseEventManager.js    MR. ODD IS COMING — 경고 → 그리드 변경
 │   ├── modes.js                BATTLE / TEAM 규칙
-│   ├── gimmicks/               routeCrates, rollingLp, recStudio, turntables, speakerDrop, wind, doors
+│   ├── gimmicks/               routeCrates, rollingLp, gates, recPulse, turntables, speakerDrop, wind, doors
 │   └── ai/BotBrain.js          CPU (위험 지도 + 경로 유지)
 ├── render/                     ← Three.js 3D Quarter-view
 │   ├── GameRenderer.js         PerspectiveCamera(50° 하향, 아레나 자동 맞춤), 조명, 이벤트 연출
@@ -172,7 +193,7 @@ src/
 
 ## 테스트 (마스터 프롬프트 39절 기준)
 
-`npm test` — 65개
+`npm test` — 70개
 
 | 39절 기준 | 테스트 |
 | --- | --- |
@@ -181,8 +202,8 @@ src/
 | A.A.: Bomb Capacity 차이 | 〃 |
 | REX: Wave Range 차이 | 〃 |
 | 7명 모두 Move / Bomb / Item / Trap / Victory 동일 시스템 | 〃 |
-| Beat Bomb · Wave · Chain Reaction · 아이템 · 포획/구출 · 팀 모드 | `bombWave.test.js`, `itemsTrap.test.js` |
-| 6개 스테이지 그리드 유효성 · 기믹 · MR. ODD House Event | `stages.test.js` |
+| Beat Bomb · Wave · Chain Reaction · 아이템 10종 · NEEDLE · 포획/구출 · 팀 모드 | `bombWave.test.js`, `itemsTrap.test.js` |
+| 6개 맵이 GDD v3 13×11 격자와 동일 · 기믹 · MR. ODD House Event | `stages.test.js` |
 | 스킬/캐릭터별 컨트롤러/Q 바인딩 재유입 방지, 코어의 Three.js 비의존 | `architecture.test.js` |
 | 모든 스테이지 × BATTLE/TEAM, CPU 4인 150초 무오류 | `architecture.test.js` |
 

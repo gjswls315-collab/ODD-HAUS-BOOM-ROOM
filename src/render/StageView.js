@@ -66,8 +66,8 @@ export class StageView {
     });
     floor.receiveShadow = true;
     this.root.add(floor);
-    const rug = this.theme.rug;
-    if (rug) {
+    const rugs = this.theme.rugs || (this.theme.rug ? [this.theme.rug] : []);
+    for (const rug of rugs) {
       const a = this.toWorld(rug.x0, rug.y0);
       const b = this.toWorld(rug.x1, rug.y1);
       const w = b.x - a.x + 1;
@@ -189,7 +189,8 @@ export class StageView {
   _createGroupMesh(g, initial) {
     const info = this._groupInfo(g);
     const cell = this.grid.get(g.cells[0].x, g.cells[0].y);
-    const obj = buildProp(g.prop, { w: info.w, d: info.d, face: info.face, theme: PROP_THEME[this.theme.backdrop] || {}, seed: g.id * 7 + g.cells[0].x * 3 + g.cells[0].y });
+    const theme = { ...(PROP_THEME[this.theme.backdrop] || {}), wallTrim: this.theme.wall.trim, wallAccent: this.theme.wall.accent };
+    const obj = buildProp(g.prop, { w: info.w, d: info.d, face: info.face, theme, seed: g.id * 7 + g.cells[0].x * 3 + g.cells[0].y });
     obj.position.set(info.wc.x, 0, info.wc.z);
     this.root.add(obj);
     const entry = { obj, key: info.key, from: null, to: obj.position.clone(), t: 1, dur: 0.35, spawn: initial ? 1 : 0, cellRef: cell };
@@ -273,12 +274,17 @@ export class StageView {
         } else if (gim.kind === 'lever') {
           const arm = e.obj.getObjectByName('leverArm');
           if (arm) arm.rotation.z = damp(arm.rotation.z, gim.on ? -0.6 : 0.6, 10, dt);
+        } else if (gim.kind === 'gate') {
+          const body = e.obj.getObjectByName('gateBody');
+          if (body) body.position.y = damp(body.position.y, gim.open ? -0.86 : 0, 9, dt);
+          const ringM = e.obj.getObjectByName('gateRing');
+          if (ringM) ringM.material.color.set(gim.open ? '#6ee3a3' : '#ff3b4f');
         } else if (gim.kind === 'recSwitch') {
           const b = e.obj.getObjectByName('button');
           if (b) b.material.emissiveIntensity = gim.on ? 1.6 + Math.sin(this.t * 10) * 0.6 : 0.25;
         }
       }
-      if (rec && e.obj.userData.prop === 'amp') {
+      if (rec && (e.obj.userData.prop === 'amp' || e.obj.userData.prop === 'ampGate')) {
         const l = e.obj.getObjectByName('ampLight');
         if (l) l.material.emissiveIntensity = rec.charging ? 2.5 + Math.sin(this.t * 30) * 1.5 : rec.state === 'rec' ? 1.2 : 0.4;
       }
@@ -322,6 +328,11 @@ export class StageView {
     for (const l of this.lights) l.light.intensity = damp(l.light.intensity, l.base * (lightsOut ? 0.25 : 1) * (0.85 + beat * 0.3), 6, dt);
     if (this.led) this.led.material.opacity = lightsOut ? 0.25 : 0.7 + beat * 0.3;
     if (this.discoBall) this.discoBall.rotation.y += dt * 0.8;
+    // TERRACE 바람 장치 회전 (바람 예고 / 돌풍 때 빠르게)
+    for (const e of this.groupMeshes.values()) {
+      const blades = e.obj.userData.prop === 'windFan' ? e.obj.getObjectByName('fanBlades') : null;
+      if (blades) blades.rotation.z += dt * (this.windBoost ? 26 : 4);
+    }
   }
 
   dispose() {
