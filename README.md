@@ -18,6 +18,7 @@ npm run build      # dist/ (정적 배포 가능, base: './')
 npm run build:single   # dist/boom-room-single.html — JS·CSS 를 한 파일에 묶은 버전 (더블클릭으로 열기)
 ```
 
+- **GitHub Pages**: 저장소 Settings → Pages 에서 이 브랜치의 `/ (root)` 를 배포하면 빌드 없이 그대로 실행됩니다 (`index.html` 의 import map 이 three.js 를 CDN 에서 불러옴, `.nojekyll` 포함). 주소: `https://<계정>.github.io/<저장소>/`
 - 타이틀의 **WATCH CPU MATCH** 로 키보드 없이 CPU 4명 경기를 관전할 수 있습니다.
 - 터치 기기(휴대폰·태블릿)에서는 화면에 D-pad / BOMB / DASH / ITEM / 일시정지 버튼이 나타납니다 (P1 과 같은 입력 경로). 휴대폰은 가로 화면을 권장합니다.
 

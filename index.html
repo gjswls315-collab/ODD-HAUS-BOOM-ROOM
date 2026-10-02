@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Luckiest+Guy&family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/src/ui/styles.css" />
+    <link rel="stylesheet" href="./src/ui/styles.css" />
   </head>
   <body>
     <div id="app">
@@ -21,6 +21,16 @@
         <div class="boot-msg">LOADING…</div>
       </div>
     </div>
-    <script type="module" src="/src/main.js"></script>
+    <!-- GitHub Pages(브랜치 그대로 배포)에서도 빌드 없이 실행되도록: 'three' 를 CDN 으로 연결.
+         npm run dev / build 에서는 Vite 가 node_modules 의 three 를 쓰므로 영향 없음 (버전은 package.json 과 동일하게 고정) -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/"
+        }
+      }
+    </script>
+    <script type="module" src="./src/main.js"></script>
   </body>
 </html>

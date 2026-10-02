@@ -33,12 +33,15 @@ export async function preloadCharacterModels(ids) {
     ids.map(async (id) => {
       if (glbCache.has(id)) return;
       const cfg = CHARACTER_VISUALS[id];
-      if (!cfg || !(await glbExists(cfg.glb))) {
+      // 빌드본은 public/ 이 루트로 복사되고, GitHub Pages 에 브랜치를 그대로 배포하면 public/ 아래에 있다
+      let url = null;
+      if (cfg) for (const u of [cfg.glb, `public/${cfg.glb}`]) if (!url && (await glbExists(u))) url = u;
+      if (!url) {
         glbCache.set(id, null);
         return;
       }
       try {
-        const gltf = await loader.loadAsync(cfg.glb);
+        const gltf = await loader.loadAsync(url);
         glbCache.set(id, gltf);
       } catch (e) {
         console.warn(`[BOOM ROOM] GLB load failed for ${id}, using 3D placeholder`, e);
