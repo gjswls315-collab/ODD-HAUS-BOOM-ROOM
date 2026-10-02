@@ -14,6 +14,18 @@ import { ITEM_TYPES } from '../config/itemConfig.js';
 const PITCH = THREE.MathUtils.degToRad(50);
 const FOV = 34;
 
+// v4 카메라: Soft Follow + Dynamic Zoom
+//   살아 있는 플레이어(사람 우선)의 중심을 부드럽게 따라가고,
+//   서로 가까우면 확대 / 멀어지면 축소 (최대 축소 제한 — 큰 맵은 일부가 화면 밖으로 나갈 수 있다)
+export const CAMERA_CONFIG = {
+  minView: [11, 8], // 가장 가까울 때 보이는 칸 수 (가로, 세로)
+  maxView: [16, 12.5], // 가장 멀 때 — 이보다 큰 맵은 일부가 화면 밖
+  margin: 2.6, // 플레이어 묶음 바깥 여유 칸
+  followRate: 2.4,
+  zoomRate: 1.7,
+  introHold: 1.2, // 시작 직후 전체 보기 유지 시간
+};
+
 const PROP_DEBRIS = {
   lpBox: ['#c99a5e', '#a37a45', '#d94b3d', '#3d8bd9'],
   books: ['#b83a3a', '#2f5d8c', '#d9a441', '#f3ecd8'],
@@ -26,6 +38,18 @@ const PROP_DEBRIS = {
   flowerPot: ['#c06b44', '#3f8a4a', '#ff7aa8'],
   crate: ['#b0814f', '#7a5530'],
   box: ['#c99a5e', '#d8c39a'],
+  magazineBox: ['#c99a5e', '#d94b3d', '#3d8bd9', '#f2c14e'],
+  cushion: ['#c94f3d', '#e8b04a', '#3d7a8c'],
+  lpStack: ['#1c1c22', '#d94b3d', '#3d8bd9', '#f2c14e'],
+  cardboardBox: ['#c99a5e', '#b88a52', '#d8c39a'],
+  headphoneCase: ['#2e3038', '#5c606c', '#ff5a4f'],
+  flightCase: ['#18181d', '#9aa3ad', '#b46bff'],
+  speakerCase: ['#24202e', '#b46bff', '#9aa3ad'],
+  gardenBox: ['#9a6a3c', '#3a2a1e', '#5aa35a'],
+  foldingChair: ['#c99a5e', '#2f6e7a', '#c94f3d'],
+  oldBox: ['#6b5440', '#c9b48a', '#8a7a68'],
+  clothCovered: ['#e3ddd0', '#cfc6b4'],
+  audioCase: ['#5a3a26', '#c9a35a', '#2e2018'],
 };
 
 export class GameRenderer {
@@ -109,11 +133,12 @@ export class GameRenderer {
 
   toWorld = (x, y) => ({ x: x - (this.W - 1) / 2, z: y - (this.H - 1) / 2 });
 
-  setMatch(gm, { hudTopPx = 96, bottomPx = 0 } = {}) {
+  setMatch(gm, { hudTopPx = 96, bottomPx = 0, dynamic = true } = {}) {
     this.clearMatch();
     this.gm = gm;
     this.hudTopPx = hudTopPx;
     this.bottomPx = bottomPx;
+    this.dynamicCamera = dynamic;
     this.W = gm.grid.width;
     this.H = gm.grid.height;
     const th = gm.stageDef.theme;
@@ -150,6 +175,7 @@ export class GameRenderer {
     this._fitCamera();
     this.camTarget.copy(this.camBase.target);
     this.camDist = this.camBase.dist;
+    this.viewRect = { x0: 0, y0: 0, x1: this.W - 1, y1: this.H - 1 };
   }
 
   clearMatch() {
@@ -200,6 +226,8 @@ export class GameRenderer {
     if (Math.abs(dy) > 0.001) this.camera.setViewOffset(wpx, hpx, 0, (dy * hpx) / 2, wpx, hpx);
     this.camBase.target.copy(target);
     this.camBase.dist = hi;
+    this._buildZoomModel(target, topLim, botLim);
+    this._placeCamera(target, hi, 0);
     // 카메라가 멀어지는 좁은 화면에서도 안개에 묻히지 않도록
     if (this.scene.fog) {
       this.scene.fog.near = hi * 0.95;
@@ -207,6 +235,58 @@ export class GameRenderer {
     }
     this.camera.far = Math.max(200, hi * 4);
     this.camera.updateProjectionMatrix();
+  }
+
+  // 상자(w×h 칸)를 화면(HUD/터치 영역 제외)에 담는 카메라 거리 — 선형 모델로 근사해 매 프레임 계산을 가볍게
+  _boxDist(target, w, h, topLim, botLim) {
+    const pts = [];
+    for (const x of [-w / 2, w / 2]) for (const z of [-h / 2, h / 2]) pts.push(new THREE.Vector3(target.x + x, 0.4, target.z + z));
+    let lo = 2;
+    let hi = 200;
+    for (let i = 0; i < 26; i++) {
+      const d = (lo + hi) / 2;
+      this._placeCamera(target, d, 0);
+      this.camera.updateMatrixWorld();
+      let xmax = 0;
+      let ymin = Infinity;
+      let ymax = -Infinity;
+      for (const p of pts) {
+        const v = p.clone().project(this.camera);
+        xmax = Math.max(xmax, Math.abs(v.x));
+        ymin = Math.min(ymin, v.y);
+        ymax = Math.max(ymax, v.y);
+      }
+      if (xmax <= 0.98 && ymax - ymin <= topLim - botLim) hi = d;
+      else lo = d;
+    }
+    return hi;
+  }
+
+  _buildZoomModel(target, topLim, botLim) {
+    const t = target.clone();
+    const a1 = 6;
+    const a2 = 20;
+    const w1 = this._boxDist(t, a1, 0.1, topLim, botLim);
+    const w2 = this._boxDist(t, a2, 0.1, topLim, botLim);
+    const h1 = this._boxDist(t, 0.1, a1, topLim, botLim);
+    const h2 = this._boxDist(t, 0.1, a2, topLim, botLim);
+    const kw = (w2 - w1) / (a2 - a1);
+    const kh = (h2 - h1) / (a2 - a1);
+    this.zoomModel = { kw, bw: w1 - kw * a1, kh, bh: h1 - kh * a1 };
+    const C = CAMERA_CONFIG;
+    this.camMin = Math.min(this.camBase.dist, this._distFor(C.minView[0], C.minView[1]));
+    this.camMax = Math.min(this.camBase.dist, Math.max(this.camMin, this._distFor(C.maxView[0], C.maxView[1])));
+  }
+
+  _distFor(w, h) {
+    const m = this.zoomModel;
+    return Math.max(m.kw * w + m.bw, m.kh * h + m.bh);
+  }
+
+  // 카메라 거리 d 에서 보이는 칸 수 (가로, 세로)
+  _viewSize(d) {
+    const m = this.zoomModel;
+    return { w: (d - m.bw) / m.kw, h: (d - m.bh) / m.kh };
   }
 
   _placeCamera(target, dist, sway) {
@@ -418,26 +498,100 @@ export class GameRenderer {
     this.renderer.render(this.scene, this.camera);
   }
 
+  // 따라갈 대상: 살아 있는 사람 플레이어 우선, 가까운 CPU 는 화면에 들어오는 만큼 포함
+  _interest() {
+    const gm = this.gm;
+    const alive = gm.players.list.filter((p) => !p.isEliminated);
+    if (!alive.length) return null;
+    const humans = alive.filter((p) => !p.isBot);
+    const core = humans.length ? humans : alive;
+    const box = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+    const add = (p) => {
+      box.x0 = Math.min(box.x0, p.x);
+      box.x1 = Math.max(box.x1, p.x);
+      box.y0 = Math.min(box.y0, p.y);
+      box.y1 = Math.max(box.y1, p.y);
+    };
+    core.forEach(add);
+    let sx = 0;
+    let sy = 0;
+    let sw = 0;
+    for (const p of core) {
+      sx += p.x * 2;
+      sy += p.y * 2;
+      sw += 2;
+    }
+    if (humans.length) {
+      const C = CAMERA_CONFIG;
+      const maxW = this._viewSize(this.camMax).w - C.margin * 2;
+      const maxH = this._viewSize(this.camMax).h - C.margin * 2;
+      for (const b of alive.filter((p) => p.isBot)) {
+        const nx0 = Math.min(box.x0, b.x);
+        const nx1 = Math.max(box.x1, b.x);
+        const ny0 = Math.min(box.y0, b.y);
+        const ny1 = Math.max(box.y1, b.y);
+        if (nx1 - nx0 > maxW || ny1 - ny0 > maxH) continue;
+        add(b);
+        sx += b.x;
+        sy += b.y;
+        sw += 1;
+      }
+    }
+    return { box, cx: sx / sw, cy: sy / sw };
+  }
+
   _updateCamera(dt) {
     let target = this.camBase.target;
     let dist = this.camBase.dist;
+    let follow = CAMERA_CONFIG.followRate;
+    let zoom = CAMERA_CONFIG.zoomRate;
+    const gm = this.gm;
     if (this.focus) {
-      const ps = this.focus.map((id) => this.gm.players.get(id)).filter(Boolean);
+      const ps = this.focus.map((id) => gm.players.get(id)).filter(Boolean);
       if (ps.length) {
         const cx = ps.reduce((s, p) => s + p.x, 0) / ps.length;
         const cy = ps.reduce((s, p) => s + p.y, 0) / ps.length;
         const w = this.toWorld(cx, cy);
         target = new THREE.Vector3(w.x, 0.3, w.z);
         dist = this.camBase.dist * 0.45;
+        follow = 3;
+        zoom = 3;
+      }
+    } else if (this.dynamicCamera && this.zoomModel && gm.phase !== 'COUNTDOWN' && gm.matchTime > CAMERA_CONFIG.introHold) {
+      const it = this._interest();
+      if (it) {
+        const C = CAMERA_CONFIG;
+        const bw = it.box.x1 - it.box.x0 + 1 + C.margin * 2;
+        const bh = it.box.y1 - it.box.y0 + 1 + C.margin * 2;
+        dist = Math.min(this.camMax, Math.max(this.camMin, this._distFor(bw, bh)));
+        // 맵 밖 빈 공간이 많이 보이지 않도록 중심을 아레나 안쪽으로 제한
+        const view = this._viewSize(dist);
+        const w = this.toWorld(it.cx, it.cy);
+        const base = this.camBase.target;
+        const limX = Math.max(0, (this.W - view.w) / 2 + 0.6);
+        const limZ = Math.max(0, (this.H - view.h) / 2 + 0.6);
+        target = new THREE.Vector3(
+          THREE.MathUtils.clamp(w.x, base.x - limX, base.x + limX),
+          0,
+          THREE.MathUtils.clamp(w.z + base.z, base.z - limZ, base.z + limZ),
+        );
       }
     }
-    this.camTarget.lerp(target, 1 - Math.exp(-3 * dt));
-    this.camDist = damp(this.camDist, dist, 3, dt);
+    this.camTarget.lerp(target, 1 - Math.exp(-follow * dt));
+    this.camDist = damp(this.camDist, dist, zoom, dt);
     this.trauma = Math.max(0, this.trauma - dt * 1.6);
     const sh = this.trauma * this.trauma * 0.35;
     const t = this.t;
     const off = new THREE.Vector3(Math.sin(t * 47) * sh, Math.sin(t * 53 + 1) * sh, Math.sin(t * 41 + 2) * sh);
     this._placeCamera(this.camTarget, this.camDist, Math.sin(t * 0.15) * 0.25);
     this.camera.position.add(off);
+
+    // 미니맵용 화면 영역 (칸 좌표)
+    if (this.zoomModel) {
+      const v = this._viewSize(this.camDist);
+      const cx = this.camTarget.x + (this.W - 1) / 2;
+      const cy = this.camTarget.z - this.camBase.target.z + (this.H - 1) / 2;
+      this.viewRect = { x0: cx - v.w / 2, x1: cx + v.w / 2, y0: cy - v.h / 2, y1: cy + v.h / 2 };
+    }
   }
 }

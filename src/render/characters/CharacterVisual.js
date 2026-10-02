@@ -3,7 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as skeletonClone } from 'three/addons/utils/SkeletonUtils.js';
 import { CHARACTER_VISUALS } from '../../config/characterVisualConfig.js';
 import { buildPlaceholder } from './placeholders.js';
-import { group } from '../kit.js';
+import { group, mesh, torus } from '../kit.js';
 
 // ─────────────────────────────────────────────────────────────
 // CharacterVisual — PlayerRoot 의 VisualModel 레이어.
@@ -104,6 +104,54 @@ export class CharacterVisual {
     this.base = {
       bodyY: this.rig.body.position.y,
     };
+    this._buildPulse();
+  }
+
+  // 공통 "music pulse ring" — Beat Bomb 설치 시 몸 / 손 주위로 퍼지는 음파 링 (모든 캐릭터 동일)
+  _buildPulse() {
+    const make = (r, t) => mesh(torus(r, t, 6, 40), new THREE.MeshBasicMaterial({ color: '#ffb347', transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }), { cast: false });
+    this.pulseRing = make(0.36, 0.018);
+    this.pulseRing.rotation.x = Math.PI / 2;
+    this.pulseRing.position.y = 0.42;
+    this.pulseRing2 = make(0.36, 0.01);
+    this.pulseRing2.rotation.x = Math.PI / 2;
+    this.pulseRing2.position.y = 0.2;
+    this.rig.root.add(this.pulseRing, this.pulseRing2);
+    this.handRings = [];
+    for (const a of [this.rig.armL, this.rig.armR]) {
+      const hand = a?.children[a.children.length - 1];
+      if (!hand) continue;
+      const hr = make(0.08, 0.012);
+      hand.add(hr);
+      this.handRings.push(hr);
+    }
+    this.pulseT = 9;
+  }
+
+  _updatePulse(dt) {
+    this.pulseT += dt;
+    const k = Math.min(1, this.pulseT / 0.55);
+    const on = this.pulseT < 0.55;
+    const a = on ? (1 - k) * 0.95 : 0;
+    this.pulseRing.visible = on;
+    this.pulseRing2.visible = on;
+    if (!on) {
+      for (const h of this.handRings) h.visible = false;
+      return;
+    }
+    this.pulseRing.scale.setScalar(0.6 + k * 1.3);
+    this.pulseRing.material.opacity = a;
+    this.pulseRing.material.color.set(k < 0.5 ? '#ffb347' : '#6fc8ff');
+    const k2 = Math.max(0, Math.min(1, (this.pulseT - 0.12) / 0.43));
+    this.pulseRing2.scale.setScalar(0.5 + k2 * 1.6);
+    this.pulseRing2.material.opacity = (1 - k2) * 0.7;
+    this.pulseRing2.material.color.set('#9a7bff');
+    for (const h of this.handRings) {
+      h.visible = true;
+      h.scale.setScalar(1 + Math.sin(k * Math.PI * 3) * 0.6 + k);
+      h.material.opacity = a;
+      h.rotation.y += dt * 8;
+    }
   }
 
   _play(name) {
@@ -120,6 +168,12 @@ export class CharacterVisual {
     const r = this.rig;
     const W = this.cfg.walk;
     const body = r.body;
+
+    if (state !== this.prevState) {
+      if (state === 'PLACE_BOMB') this.pulseT = 0;
+      this.prevState = state;
+    }
+    this._updatePulse(dt);
 
     if (r.glb) {
       r.mixer.update(dt);
@@ -212,16 +266,24 @@ export class CharacterVisual {
         this._victoryAnim(stateTime);
         break;
       default: {
-        // IDLE
-        body.scale.y = 1 + Math.sin(this.t * 2.4) * 0.025;
-        body.rotation.z = Math.sin(this.t * 1.2) * W.sway * 0.25;
+        // IDLE — 캐릭터 성격은 자세/리듬으로 (Picker 앞으로 기울기 · Rex 낮고 느림 · Buddy 통통)
+        const I = this.cfg.idle || { lean: 0, bob: 0.01, freq: 2.4, sway: W.sway };
+        const ph = this.t * I.freq;
+        const sq = I.squash ?? 1;
+        body.rotation.x = I.lean;
+        body.position.y += I.bounce ? Math.abs(Math.sin(ph)) * I.bob : (Math.sin(ph) * 0.5 + 0.5) * I.bob;
+        body.scale.set(1 + (1 - sq) * 0.6, sq * (1 + Math.sin(ph) * 0.025), 1 + (1 - sq) * 0.6);
+        body.rotation.z = Math.sin(this.t * 1.2) * I.sway * 0.25;
         if (r.armL && !r.quadruped) {
-          r.armL.rotation.z = -0.35 - Math.sin(this.t * 2.4) * 0.05;
-          r.armR.rotation.z = 0.35 + Math.sin(this.t * 2.4) * 0.05;
+          r.armL.rotation.z = -0.35 - Math.sin(ph) * 0.05;
+          r.armR.rotation.z = 0.35 + Math.sin(ph) * 0.05;
         }
-        if (r.head && this.id === 'locke') r.head.rotation.y = Math.sin(this.t * 0.7) * 0.25;
+        if (r.head && I.look) r.head.rotation.y = Math.sin(this.t * 0.7) * 0.35;
+        if (r.cape) r.cape.rotation.x = -0.08 - Math.sin(this.t * 1.6) * 0.06;
       }
     }
+    // Rex 처럼 무게중심이 낮은 캐릭터는 걸을 때도 낮게
+    if ((state === 'MOVE' || state === 'DASH') && this.cfg.idle?.squash) body.scale.y *= this.cfg.idle.squash;
   }
 
   // Beat Bomb 설치 — 판정은 동일, 모션만 캐릭터별

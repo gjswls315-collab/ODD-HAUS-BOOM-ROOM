@@ -95,6 +95,7 @@ export class App {
       this.ui.banner?.(m ? 'MUTE' : 'SOUND ON', { ms: 700 });
     }
     if (GLOBAL_KEYS.debug.includes(e.code)) this.debug = !this.debug;
+    if (GLOBAL_KEYS.minimap.includes(e.code) && this.state === 'match') this.ui.toggleMinimap();
     // 일시정지 토글은 여기서만 처리 (UI 메뉴는 ESC 를 처리하지 않음 → 중복 토글 방지)
     if (this.state === 'match' && GLOBAL_KEYS.pause.includes(e.code) && this.gm && this.gm.phase !== MATCH_PHASE.ENDED) {
       if (this.paused) this.resume();
@@ -117,7 +118,7 @@ export class App {
       seed: Math.floor(Math.random() * 1e6),
       skipCountdown: true,
     });
-    this._setMatch(gm, { hudTopPx: 0 });
+    this._setMatch(gm, { hudTopPx: 0, dynamic: false });
     this.attract = true;
   }
 
@@ -370,7 +371,7 @@ export class App {
         }
       }
     }
-    if (this.state === 'match' && gm) this.ui.updateHud(gm);
+    if (this.state === 'match' && gm) this.ui.updateHud(gm, { view: this.renderer.viewRect });
     this.renderer.render(dt, { beat: this.audio.beat() });
     if (this.debug) this._debugOverlay();
     else if (this._debugEl) {

@@ -8,7 +8,7 @@ import { floorTexture, rugTexture, wallpaperTexture, labelTexture, spinesTexture
 // 그리드 그룹(가구/상자)을 메쉬로 1:1 매칭하고, grid.version 변화 시 재조정한다.
 // ─────────────────────────────────────────────────────────────
 
-const FLOOR_STYLE = { lounge: 'wood', library: 'wood', studio: 'tile', djbooth: 'tile', terrace: 'deck', lockedroom: 'wood' };
+const FLOOR_STYLE = { lounge: 'planks', library: 'parquet', studio: 'tiles', djbooth: 'tiles', terrace: 'deck', lockedroom: 'planks' };
 
 const PROP_THEME = {
   lounge: { sofa: '#8e2b2f', sofaCushion: '#a83a3c', lampShade: '#f2d29b' },
@@ -54,12 +54,12 @@ export class StageView {
 
   _buildFloor() {
     const { W, H } = this;
-    const style = FLOOR_STYLE[this.theme.backdrop] || 'wood';
+    const style = this.theme.floor.style || FLOOR_STYLE[this.theme.backdrop] || 'planks';
     // 바깥 바닥 (아레나 밖까지 이어지는 집 바닥)
     const outer = mesh(plane(W + 30, H + 30), mat(new THREE.Color(this.theme.floor.b).multiplyScalar(0.55), { rough: 0.9 }), { r: [-Math.PI / 2, 0, 0], p: [0, -0.01, 4], cast: false });
     this.root.add(outer);
     const tex = floorTexture(this.theme.floor, W - 2, H - 2, style);
-    const floor = mesh(plane(W - 2, H - 2), mat('#ffffff', { map: tex, rough: style === 'tile' ? 0.45 : 0.75, metal: style === 'tile' ? 0.15 : 0 }), {
+    const floor = mesh(plane(W - 2, H - 2), mat('#ffffff', { map: tex, rough: style === 'tiles' ? 0.45 : 0.75, metal: style === 'tiles' ? 0.15 : 0 }), {
       r: [-Math.PI / 2, 0, 0],
       p: [0, 0, 0],
       cast: false,
@@ -72,7 +72,7 @@ export class StageView {
       const b = this.toWorld(rug.x1, rug.y1);
       const w = b.x - a.x + 1;
       const d = b.z - a.z + 1;
-      const m = mesh(plane(w - 0.1, d - 0.1), mat('#ffffff', { map: rugTexture(rug.color, rug.trim), rough: 1 }), {
+      const m = mesh(plane(w - 0.1, d - 0.1), mat('#ffffff', { map: rugTexture(rug.color, rug.trim, Math.round(w), Math.round(d), rug.kind), rough: 1 }), {
         r: [-Math.PI / 2, 0, 0],
         p: [(a.x + b.x) / 2, 0.006, (a.z + b.z) / 2],
         cast: false,

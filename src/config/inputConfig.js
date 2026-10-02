@@ -73,6 +73,7 @@ export const GLOBAL_KEYS = {
   pause: ['Escape', 'KeyP'],
   mute: ['KeyM'],
   debug: ['F3', 'Backquote'],
+  minimap: ['KeyN'],
 };
 
 // Gamepad (Standard mapping) — 연결 순서대로 P1~P4 에 추가 배정

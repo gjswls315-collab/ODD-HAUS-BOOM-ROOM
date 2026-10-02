@@ -155,7 +155,7 @@ export const STAGES = {
     theme: {
       backdrop: 'library',
       border: 'room',
-      floor: { a: '#4b2e1f', b: '#42281a', line: '#2a170d', style: 'herringbone' },
+      floor: { a: '#4b2e1f', b: '#42281a', line: '#2a170d', style: 'parquet' },
       rugs: [
         { x0: 1, y0: 3, x1: 15, y1: 3, color: '#2b3f6b', trim: '#c79a45', kind: 'runner' },
         { x0: 1, y0: 11, x1: 15, y1: 11, color: '#2b3f6b', trim: '#c79a45', kind: 'runner' },
@@ -260,8 +260,8 @@ export const STAGES = {
       rugs: [],
       wall: { color: '#140f22', trim: '#2a2140', accent: '#b46bff' },
       fog: '#08060e',
-      hemi: ['#a296f0', '#22163a', 0.8],
-      key: ['#ffd6ee', 1.45],
+      hemi: ['#a296f0', '#22163a', 1.05],
+      key: ['#ffd6ee', 1.75],
       accents: ['#b46bff', '#4fb8ff'],
     },
   },
@@ -341,7 +341,7 @@ export const STAGES = {
     solids: {
       merge: true,
       byLength: {
-        1: [{ prop: 'cabinet', movable: true }, { prop: 'coveredFurniture', movable: true }, { prop: 'grandfatherClock', movable: false }, { prop: 'coveredFurniture', movable: true }],
+        1: [{ prop: 'cabinet', movable: true }, { prop: 'armchair', movable: true }, { prop: 'grandfatherClock', movable: false }, { prop: 'armchair', movable: true }],
         default: { prop: 'cabinet', movable: true },
       },
       borderAttached: 'wardrobe',
@@ -365,8 +365,8 @@ export const STAGES = {
       rugs: [{ x0: 7, y0: 6, x1: 11, y1: 10, color: '#3d2a1e', trim: '#7a5a3a' }],
       wall: { color: '#221c1c', trim: '#3a2c22', accent: '#ffb35c' },
       fog: '#08080b',
-      hemi: ['#9eabc8', '#251c16', 0.58],
-      key: ['#ffd3a2', 1.45],
+      hemi: ['#9eabc8', '#251c16', 0.74],
+      key: ['#ffd3a2', 1.65],
       accents: ['#ffb35c', '#6f8cff'],
     },
   },

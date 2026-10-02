@@ -803,6 +803,31 @@ button {
 .hud-controls.fade {
   opacity: 0;
 }
+/* 미니맵 — 데스크톱: 오른쪽 아래 / 터치: 타이머 아래 */
+.minimap {
+  position: absolute;
+  right: calc(14px + env(safe-area-inset-right, 0px));
+  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  border-radius: 8px;
+  background: rgba(8, 12, 17, 0.7);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  opacity: 0.92;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+.minimap.off {
+  display: none;
+}
+@media (pointer: coarse) {
+  .minimap {
+    right: auto;
+    bottom: auto;
+    left: 50%;
+    top: calc(76px + env(safe-area-inset-top, 0px));
+    transform: translateX(-50%);
+  }
+}
 .banner {
   position: absolute;
   top: 22%;
@@ -1118,6 +1143,13 @@ button {
 
 /* ── Phone layout ─────────────────────── */
 @media (max-width: 700px) {
+  .minimap {
+    left: auto;
+    transform: none;
+    right: calc(8px + env(safe-area-inset-right, 0px));
+    top: calc(178px + env(safe-area-inset-top, 0px));
+    opacity: 0.85;
+  }
   .title-screen {
     padding: 16px;
     align-items: start;

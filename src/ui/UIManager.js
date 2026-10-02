@@ -451,7 +451,7 @@ export class UIManager {
       'hud',
       el(`<div class="screen hud passthrough">
         <div class="hud-top"><div class="hud-side left"></div><div class="timer"><b>03:00</b><small>${gm.stageDef.name}</small></div><div class="hud-side right"></div></div>
-        ${showControls && gm.players.list.some((p) => !p.isBot) ? `<div class="hud-controls"><span class="key">${hudMoveLabel(gm)}</span>이동 <span class="key">SPACE</span>Beat Bomb <span class="key">SHIFT</span>Dash <span class="key">E</span>Item <span class="key">ESC</span>Pause</div>` : ''}
+        ${showControls && gm.players.list.some((p) => !p.isBot) ? `<div class="hud-controls"><span class="key">${hudMoveLabel(gm)}</span>이동 <span class="key">SPACE</span>Beat Bomb <span class="key">SHIFT</span>Dash <span class="key">E</span>Item <span class="key">N</span>Map <span class="key">ESC</span>Pause</div>` : ''}
       </div>`),
     );
     const left = node.querySelector('.hud-side.left');
@@ -467,6 +467,7 @@ export class UIManager {
       return { el: c, key: '' };
     });
     this.hud = { node, cards, timer: node.querySelector('.timer'), timerB: node.querySelector('.timer b'), controls: node.querySelector('.hud-controls'), born: performance.now() };
+    this._minimap(node, gm);
     if (isTouchDevice() && gm.players.list.some((p) => !p.isBot)) this._touchControls(node);
     else if (isTouchDevice()) this._touchPause(node);
   }
@@ -527,9 +528,98 @@ export class UIManager {
     this.hud.controls = null;
   }
 
-  updateHud(gm) {
+  // ── MINIMAP (선택) — 큰 맵에서 화면 밖 상황 확인. N 키 / 터치: 타이머 탭 ──
+  _minimap(node, gm) {
+    let on = !(window.innerWidth <= 700);
+    try {
+      const saved = localStorage.getItem('boomroom.minimap');
+      if (saved !== null) on = saved === '1';
+    } catch {
+      /* storage 차단 — 기본값 사용 */
+    }
+    const cs = window.innerWidth <= 700 ? 5 : 7;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const cv = el('<canvas class="minimap" aria-label="미니맵"></canvas>');
+    cv.width = gm.grid.width * cs * dpr;
+    cv.height = gm.grid.height * cs * dpr;
+    cv.style.width = `${gm.grid.width * cs}px`;
+    cv.style.height = `${gm.grid.height * cs}px`;
+    cv.classList.toggle('off', !on);
+    node.appendChild(cv);
+    this.hud.minimap = { cv, ctx: cv.getContext('2d'), cs: cs * dpr, on, frame: 0 };
+    this.hud.timer.addEventListener('pointerdown', () => this.toggleMinimap());
+    this.hud.timer.style.pointerEvents = 'auto';
+  }
+
+  toggleMinimap() {
+    const mm = this.hud?.minimap;
+    if (!mm) return;
+    mm.on = !mm.on;
+    mm.cv.classList.toggle('off', !mm.on);
+    try {
+      localStorage.setItem('boomroom.minimap', mm.on ? '1' : '0');
+    } catch {
+      /* 무시 */
+    }
+  }
+
+  _drawMinimap(gm, view) {
+    const mm = this.hud?.minimap;
+    if (!mm || !mm.on) return;
+    if (mm.frame++ % 2) return;
+    const { ctx, cs } = mm;
+    const g = gm.grid;
+    ctx.clearRect(0, 0, mm.cv.width, mm.cv.height);
+    for (const c of g.cells) {
+      let col = null;
+      if (c.border) col = '#10141b';
+      else if (c.type === 'SOLID') col = '#5b6778';
+      else if (c.type === 'BREAKABLE') col = c.routeCrate ? '#d9a441' : '#9a6a3c';
+      else if (c.type === 'GIMMICK') col = c.gimmick?.solid ? '#8a62e8' : '#3d3060';
+      else col = '#262c36';
+      ctx.fillStyle = col;
+      ctx.fillRect(c.x * cs, c.y * cs, cs, cs);
+    }
+    for (const w of gm.waves.cells.values()) {
+      ctx.fillStyle = 'rgba(110, 200, 255, 0.85)';
+      ctx.fillRect(w.x * cs, w.y * cs, cs, cs);
+    }
+    for (const it of gm.items.items) {
+      ctx.fillStyle = ITEM_TYPES[it.type]?.color || '#fff';
+      ctx.fillRect(it.x * cs + cs * 0.3, it.y * cs + cs * 0.3, cs * 0.4, cs * 0.4);
+    }
+    const blink = Math.floor(performance.now() / 160) % 2;
+    for (const b of gm.bombs.bombs) {
+      ctx.fillStyle = blink ? '#ff5a4f' : '#ffd166';
+      ctx.beginPath();
+      ctx.arc((b.x + 0.5) * cs, (b.y + 0.5) * cs, cs * 0.32, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    for (const p of gm.players.list) {
+      if (p.isEliminated) continue;
+      ctx.beginPath();
+      ctx.arc((p.x + 0.5) * cs, (p.y + 0.5) * cs, cs * 0.45, 0, Math.PI * 2);
+      ctx.fillStyle = p.isTrapped ? '#b46bff' : p.color;
+      ctx.fill();
+      ctx.lineWidth = Math.max(1, cs * 0.12);
+      ctx.strokeStyle = p.isBot ? 'rgba(0,0,0,0.6)' : '#ffffff';
+      ctx.stroke();
+    }
+    if (view) {
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+      ctx.lineWidth = Math.max(1, cs * 0.14);
+      const x0 = Math.max(0, view.x0 + 0.5) * cs;
+      const y0 = Math.max(0, view.y0 + 0.5) * cs;
+      const x1 = Math.min(g.width, view.x1 + 0.5) * cs;
+      const y1 = Math.min(g.height, view.y1 + 0.5) * cs;
+      ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+    }
+  }
+
+  updateHud(gm, { view = null } = {}) {
     const h = this.hud;
     if (!h) return;
+    this._drawMinimap(gm, view);
     const tl = gm.timeLeft;
     h.timerB.textContent = fmtTime(tl);
     h.timer.classList.toggle('hurry', tl <= 30 && gm.phase === 'PLAYING');

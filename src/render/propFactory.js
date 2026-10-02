@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { rbox, box, cyl, sphere, torus, cone, capsule, plane, mat, basic, mesh, group } from './kit.js';
+import { rbox, box, cyl, sphere, torus, cone, capsule, plane, circle, mat, basic, mesh, group } from './kit.js';
 import { grooveTexture, spinesTexture, labelTexture, glowTexture } from './textures.js';
 
 // ─────────────────────────────────────────────────────────────
@@ -522,6 +522,335 @@ const BUILDERS = {
     return g;
   },
 };
+
+// ─────────────────────────────────────────────────────────────
+// BOOM ROOM v4 — 스테이지별 BREAKABLE 소품 / 가구형 SOLID
+// ─────────────────────────────────────────────────────────────
+const PAPER = ['#d94b3d', '#3d8bd9', '#f2c14e', '#6ee3a3', '#b46bff', '#ff8fb1', '#ececec'];
+const pick = (arr, i) => arr[((i % arr.length) + arr.length) % arr.length];
+
+Object.assign(BUILDERS, {
+  // ── LOUNGE breakables ──────────────────────────
+  // 잡지 박스: 뚜껑 없는 낮은 상자 + 비스듬히 꽂힌 잡지
+  magazineBox({ seed }) {
+    const g = group();
+    const card = mat(CARD, { rough: 0.9 });
+    g.add(mesh(box(0.72, 0.04, 0.6), card, { p: [0, 0.02, 0] }));
+    for (const z of [-0.28, 0.28]) g.add(mesh(box(0.72, 0.4, 0.04), card, { p: [0, 0.2, z] }));
+    for (const x of [-0.34, 0.34]) g.add(mesh(box(0.04, 0.4, 0.6), card, { p: [x, 0.2, 0] }));
+    for (let i = 0; i < 6; i++) {
+      const c = pick(PAPER, seed + i);
+      g.add(mesh(box(0.05, 0.5, 0.46), mat(c, { rough: 0.55 }), { p: [-0.25 + i * 0.1, 0.32, 0], r: [0, 0, 0.18 * Math.sin(seed + i * 1.9)] }));
+    }
+    g.add(mesh(plane(0.36, 0.12), mat('#fff', { map: labelTexture('MAGAZINE', { color: '#3a2412', font: 'bold 64px sans-serif', w: 512, h: 128 }) }), { p: [0, 0.22, 0.302], cast: false }));
+    return g;
+  },
+
+  // 쿠션 더미: 통통한 쿠션 2~3개
+  cushion({ seed }) {
+    const g = group();
+    const cols = ['#c94f3d', '#e8b04a', '#3d7a8c', '#8e5bb5', '#e6dccb'];
+    g.add(mesh(rbox(0.72, 0.24, 0.66, 0.11, 4), mat(pick(cols, seed), { rough: 0.95 }), { p: [0, 0.12, 0], r: [0, 0.1, 0] }));
+    g.add(mesh(rbox(0.62, 0.22, 0.58, 0.1, 4), mat(pick(cols, seed + 2), { rough: 0.95 }), { p: [0.03, 0.34, -0.02], r: [0, -0.35, 0.04] }));
+    g.add(mesh(rbox(0.5, 0.2, 0.18, 0.08, 4), mat(pick(cols, seed + 3), { rough: 0.95 }), { p: [-0.05, 0.56, 0.05], r: [0.5, 0.6, 0] }));
+    for (const s of [-1, 1]) g.add(mesh(sphere(0.04, 8, 6), mat('#d9a441'), { p: [s * 0.36, 0.14, 0.33] }));
+    return g;
+  },
+
+  // ── LP LIBRARY breakables ──────────────────────
+  // LP 더미: 겹쳐 쌓인 LP 슬리브 + 삐져나온 검은 판
+  lpStack({ seed }) {
+    const g = group();
+    let y = 0;
+    for (let i = 0; i < 7; i++) {
+      const h = 0.06;
+      g.add(mesh(box(0.64, h, 0.64), mat(pick(PAPER, seed + i * 3), { rough: 0.6 }), { p: [0.03 * Math.sin(seed + i), y + h / 2, 0.03 * Math.cos(seed * 2 + i)], r: [0, 0.25 * Math.sin(seed * 1.7 + i * 2.1), 0] }));
+      y += h;
+    }
+    const disc = mat('#ffffff', { map: grooveTexture(pick(PAPER, seed + 1)), rough: 0.3 });
+    g.add(mesh(cyl(0.28, 0.28, 0.02, 32), [mat(BLACK), disc, disc], { p: [0.22, y + 0.012, 0.08], r: [0, 0.6, 0] }));
+    g.add(mesh(box(0.6, 0.05, 0.6), mat(pick(PAPER, seed + 5), { rough: 0.6 }), { p: [-0.06, y + 0.05, -0.04], r: [0, -0.3, 0.06] }));
+    return g;
+  },
+
+  // 골판지 상자: 테이프 + LP 스티커 (크고 작은 두 개)
+  cardboardBox({ seed }) {
+    const g = group();
+    const card = mat(seed % 2 ? CARD : '#b88a52', { rough: 0.95 });
+    g.add(mesh(rbox(0.72, 0.44, 0.64, 0.02), card, { p: [0, 0.22, 0] }));
+    g.add(mesh(box(0.74, 0.012, 0.12), mat('#d8c39a', { rough: 0.6 }), { p: [0, 0.445, 0] }));
+    g.add(mesh(rbox(0.46, 0.26, 0.4, 0.02), card, { p: [0.06, 0.57, -0.02], r: [0, 0.3, 0] }));
+    g.add(mesh(box(0.48, 0.01, 0.08), mat('#d8c39a', { rough: 0.6 }), { p: [0.06, 0.705, -0.02], r: [0, 0.3, 0] }));
+    g.add(mesh(circle(0.09, 20), mat('#fff', { map: grooveTexture('#ff5a4f', 128) }), { p: [-0.15, 0.25, 0.322], cast: false }));
+    return g;
+  },
+
+  // ── STUDIO breakable ───────────────────────────
+  // 헤드폰 케이스: 단단한 케이스 위에 헤드폰
+  headphoneCase({ seed }) {
+    const g = group();
+    g.add(mesh(rbox(0.7, 0.36, 0.58, 0.1, 3), mat('#2e3038', { rough: 0.45, metal: 0.2 }), { p: [0, 0.18, 0] }));
+    g.add(mesh(box(0.72, 0.03, 0.6), mat('#5c606c', { metal: 0.6, rough: 0.35 }), { p: [0, 0.2, 0] }));
+    g.add(mesh(torus(0.08, 0.02, 6, 16, Math.PI), mat('#1a1a1f'), { p: [0, 0.38, 0.3], r: [0, 0, 0] }));
+    const hp = group([], { p: [0, 0.44, 0], r: [0, 0.4 * Math.sin(seed), 0] });
+    const c = pick(['#ff5a4f', '#4fb8ff', '#ececec'], seed);
+    hp.add(mesh(torus(0.22, 0.03, 8, 24, Math.PI), mat('#22232a', { rough: 0.4 }), { p: [0, 0.02, 0], r: [-Math.PI / 2, 0, 0] }));
+    for (const s of [-1, 1]) {
+      hp.add(mesh(cyl(0.1, 0.1, 0.07, 18), mat('#22232a', { rough: 0.4 }), { p: [s * 0.22, 0.04, 0], r: [0, 0, Math.PI / 2] }));
+      hp.add(mesh(cyl(0.07, 0.07, 0.075, 18), mat(c, { rough: 0.5 }), { p: [s * 0.26, 0.04, 0], r: [0, 0, Math.PI / 2] }));
+    }
+    g.add(hp);
+    return g;
+  },
+
+  // ── DJ BOOTH breakables ────────────────────────
+  // 플라이트 케이스: 검은 판 + 알루미늄 모서리 + 걸쇠
+  flightCase({ seed }) {
+    const g = group();
+    const al = mat(METAL, { metal: 0.85, rough: 0.3 });
+    g.add(mesh(box(0.7, 0.5, 0.6), mat(pick(['#4b3590', '#1f6b78', '#8a2f62'], seed), { rough: 0.55 }), { p: [0, 0.25, 0] }));
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.add(mesh(box(0.05, 0.52, 0.05), al, { p: [sx * 0.35, 0.26, sz * 0.3] }));
+    g.add(mesh(box(0.2, 0.012, 0.2), mat('#ffd166', { rough: 0.5 }), { p: [0.15, 0.51, -0.1], r: [0, 0.4, 0], cast: false }));
+    for (const y of [0.02, 0.5]) {
+      for (const sz of [-1, 1]) g.add(mesh(box(0.72, 0.04, 0.04), al, { p: [0, y, sz * 0.3] }));
+      for (const sx of [-1, 1]) g.add(mesh(box(0.04, 0.04, 0.62), al, { p: [sx * 0.35, y, 0] }));
+    }
+    for (const sx of [-1, 1]) g.add(mesh(box(0.1, 0.06, 0.03), al, { p: [sx * 0.18, 0.4, 0.31] }));
+    g.add(mesh(plane(0.4, 0.1), mat('#fff', { map: labelTexture(seed % 2 ? 'ODD HAUS' : 'TOUR', { color: '#b46bff', font: 'bold 70px sans-serif', w: 512, h: 128 }) }), { p: [0, 0.22, 0.302], cast: false }));
+    return g;
+  },
+
+  // 스피커 케이스: 앞면에 스피커 콘이 보이는 로드 케이스
+  speakerCase({ seed }) {
+    const g = group();
+    g.add(mesh(rbox(0.66, 0.6, 0.56, 0.04), mat('#6d6880', { rough: 0.5, metal: 0.2 }), { p: [0, 0.3, 0] }));
+    g.add(mesh(box(0.56, 0.5, 0.02), mat('#15131a', { rough: 1 }), { p: [0, 0.3, 0.281] }));
+    g.add(mesh(box(0.6, 0.02, 0.5), mat('#9a95ad', { metal: 0.4, rough: 0.35 }), { p: [0, 0.61, 0] }));
+    g.add(mesh(cyl(0.19, 0.21, 0.04, 26), mat('#2e2a38', { rough: 0.4, metal: 0.2 }), { p: [0, 0.27, 0.29], r: [Math.PI / 2, 0, 0] }));
+    g.add(mesh(torus(0.2, 0.015, 6, 26), mat('#b46bff', { emissive: '#b46bff', ei: 1.2 }), { p: [0, 0.27, 0.3], cast: false }));
+    g.add(mesh(sphere(0.05, 10, 8), mat('#666', { metal: 0.6 }), { p: [0, 0.27, 0.31] }));
+    for (const sx of [-1, 1]) g.add(mesh(box(0.05, 0.62, 0.05), mat(METAL, { metal: 0.8, rough: 0.3 }), { p: [sx * 0.33, 0.31, 0.27] }));
+    g.add(mesh(box(0.24, 0.04, 0.08), mat('#111'), { p: [0, 0.62, 0], r: [0, 0.15 * Math.sin(seed), 0] }));
+    return g;
+  },
+
+  // ── TERRACE breakables ─────────────────────────
+  // 원예 상자: 흙 + 새싹 + 모종삽
+  gardenBox({ seed }) {
+    const g = group();
+    const wood = mat('#9a6a3c', { rough: 0.9 });
+    for (const y of [0.08, 0.24]) {
+      for (const z of [-0.29, 0.29]) g.add(mesh(box(0.72, 0.14, 0.04), wood, { p: [0, y, z] }));
+      for (const x of [-0.34, 0.34]) g.add(mesh(box(0.04, 0.14, 0.58), wood, { p: [x, y, 0] }));
+    }
+    g.add(mesh(box(0.66, 0.06, 0.54), mat('#3a2a1e', { rough: 1 }), { p: [0, 0.28, 0] }));
+    const greens = [mat('#5aa35a'), mat('#3f8a4a')];
+    for (let i = 0; i < 6; i++) {
+      const x = -0.22 + (i % 3) * 0.22;
+      const z = i < 3 ? -0.12 : 0.12;
+      g.add(mesh(sphere(0.07, 8, 6), greens[i % 2], { p: [x, 0.36, z], s: [1, 1.5, 1] }));
+    }
+    const trowel = group([], { p: [0.2, 0.36, 0.2], r: [0.3, 0.8 + seed * 0.1, 0.5] });
+    trowel.add(mesh(box(0.06, 0.02, 0.16), mat(METAL, { metal: 0.8 }), { p: [0, 0, 0.08] }));
+    trowel.add(mesh(cyl(0.02, 0.02, 0.14, 6), mat('#d94b3d'), { p: [0, 0, -0.06], r: [Math.PI / 2, 0, 0] }));
+    g.add(trowel);
+    return g;
+  },
+
+  // 접이식 의자: 펼쳐진 나무 접이식 의자
+  foldingChair({ seed }) {
+    const g = group();
+    const frame = mat(pick(['#2f6e7a', '#c94f3d', '#e8b04a'], seed), { metal: 0.4, rough: 0.4 });
+    const slat = mat('#c99a5e', { rough: 0.7 });
+    const inner = group([], { r: [0, (seed % 4) * 0.35 - 0.5, 0] });
+    for (const sx of [-1, 1]) {
+      inner.add(mesh(cyl(0.022, 0.022, 0.86, 6), frame, { p: [sx * 0.22, 0.42, -0.04], r: [0.32, 0, 0] }));
+      inner.add(mesh(cyl(0.022, 0.022, 0.6, 6), frame, { p: [sx * 0.22, 0.29, 0.06], r: [-0.42, 0, 0] }));
+    }
+    for (let i = 0; i < 4; i++) inner.add(mesh(box(0.48, 0.025, 0.08), slat, { p: [0, 0.4, -0.12 + i * 0.09] }));
+    for (let i = 0; i < 3; i++) inner.add(mesh(box(0.46, 0.08, 0.025), slat, { p: [0, 0.62 + i * 0.1, -0.22 - i * 0.03], r: [-0.3, 0, 0] }));
+    g.add(inner);
+    return g;
+  },
+
+  // ── LOCKED ROOM breakables ─────────────────────
+  // 오래된 상자: 바랜 나무 + 끈 + 낡은 라벨
+  oldBox({ seed }) {
+    const g = group();
+    g.add(mesh(rbox(0.7, 0.48, 0.62, 0.03), mat('#6b5440', { rough: 1 }), { p: [0, 0.24, 0], r: [0, 0.08 * Math.sin(seed), 0] }));
+    g.add(mesh(box(0.72, 0.03, 0.64), mat('#4a3a2c'), { p: [0, 0.48, 0] }));
+    g.add(mesh(box(0.73, 0.5, 0.025), mat('#c9b48a', { rough: 1 }), { p: [0.1, 0.25, 0], cast: false }));
+    g.add(mesh(box(0.025, 0.5, 0.65), mat('#c9b48a', { rough: 1 }), { p: [0.1, 0.25, 0], cast: false }));
+    g.add(mesh(plane(0.22, 0.14), mat('#e8dcc0', { rough: 1 }), { p: [-0.15, 0.3, 0.315], r: [0, 0, 0.1], cast: false }));
+    for (let i = 0; i < 4; i++) g.add(mesh(sphere(0.03, 6, 4), mat('#8a7a68', { rough: 1 }), { p: [-0.2 + i * 0.13, 0.5, 0.1 * Math.sin(i + seed)], s: [1.6, 0.3, 1.2] }));
+    return g;
+  },
+
+  // 천 덮인 작은 물건
+  clothCovered({ seed }) {
+    const g = group();
+    const cloth = mat(seed % 3 === 0 ? '#cfc6b4' : '#e3ddd0', { rough: 1 });
+    g.add(mesh(cone(0.4, 0.5, 12), cloth, { p: [0, 0.25, 0], s: [1, 1, 0.9] }));
+    g.add(mesh(sphere(0.2, 12, 10), cloth, { p: [0.04 * Math.sin(seed), 0.5, 0], s: [1.1, 0.8, 1] }));
+    g.add(mesh(torus(0.36, 0.05, 6, 16), cloth, { p: [0, 0.04, 0], r: [Math.PI / 2, 0, 0], s: [1, 0.9, 1] }));
+    return g;
+  },
+
+  // 오래된 오디오 케이스: 가죽 여행가방형 + 황동 걸쇠
+  audioCase({ seed }) {
+    const g = group();
+    const leather = mat(seed % 2 ? '#5a3a26' : '#3e4a3a', { rough: 0.8 });
+    g.add(mesh(rbox(0.72, 0.42, 0.5, 0.06), leather, { p: [0, 0.21, 0] }));
+    g.add(mesh(box(0.74, 0.03, 0.52), mat('#2e2018'), { p: [0, 0.3, 0] }));
+    const brass = mat('#c9a35a', { metal: 0.85, rough: 0.3 });
+    for (const sx of [-1, 1]) g.add(mesh(box(0.07, 0.08, 0.03), brass, { p: [sx * 0.22, 0.3, 0.26] }));
+    g.add(mesh(torus(0.09, 0.02, 6, 14, Math.PI), mat('#2e2018'), { p: [0, 0.44, 0] }));
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.add(mesh(sphere(0.035, 8, 6), brass, { p: [sx * 0.34, 0.04, sz * 0.22] }));
+    g.add(mesh(circle(0.07, 16), mat('#fff', { map: grooveTexture('#ffb35c', 128) }), { p: [-0.18, 0.18, 0.252], cast: false }));
+    return g;
+  },
+
+  // ── 가구형 SOLID ───────────────────────────────
+  // LOUNGE 플로어 램프 (빛 웅덩이만 — 실제 광원은 중앙 램프 하나)
+  floorLamp({ theme, seed }) {
+    const g = group();
+    g.add(mesh(cyl(0.2, 0.24, 0.06, 20), mat('#2a2522', { metal: 0.6, rough: 0.4 }), { p: [0, 0.03, 0] }));
+    g.add(mesh(cyl(0.022, 0.022, 1.15, 8), mat('#c9a35a', { metal: 0.8, rough: 0.3 }), { p: [0, 0.6, 0] }));
+    g.add(mesh(cyl(0.16, 0.26, 0.3, 20, true), mat(theme.lampShade || '#f2d29b', { emissive: '#ffb35c', ei: 0.7, side: THREE.DoubleSide, rough: 0.9 }), { p: [0, 1.2, 0], cast: false }));
+    g.add(mesh(cyl(0.3, 0.3, 0.012, 24), basic('#ffb35c', { opacity: 0.18, additive: true }), { p: [0, 0.02, 0], cast: false }));
+    g.add(mesh(rbox(0.2, 0.06, 0.2, 0.02), mat(pick(PAPER, seed)), { p: [0.12, 0.09, 0.12], r: [0, 0.4, 0] }));
+    return g;
+  },
+
+  // LOUNGE 작은 책장
+  bookcase({ w = 1, d = 1, seed }) {
+    const W = w - 0.12;
+    const D = Math.min(0.62, d - 0.2);
+    const g = group();
+    g.add(mesh(rbox(W, 0.95, D, 0.03), mat('#5a3620', { rough: 0.6 }), { p: [0, 0.475, 0] }));
+    const spines = mat('#fff', { map: spinesTexture(seed + 11), rough: 0.8 });
+    for (let r = 0; r < 3; r++) {
+      for (const s of [-1, 1]) g.add(mesh(box(W - 0.1, 0.24, 0.02), spines, { p: [0, 0.17 + r * 0.29, s * (D / 2 + 0.005)], r: [0, s < 0 ? Math.PI : 0, 0], cast: false }));
+      g.add(mesh(box(W - 0.04, 0.03, D + 0.02), mat('#7a4a2a'), { p: [0, 0.04 + r * 0.29, 0] }));
+    }
+    g.add(mesh(box(W + 0.04, 0.04, D + 0.04), mat('#8a5a34', { rough: 0.5 }), { p: [0, 0.96, 0] }));
+    g.add(mesh(cyl(0.07, 0.06, 0.14, 12), mat('#3f8a4a'), { p: [-W * 0.25, 1.05, 0] }));
+    return g;
+  },
+
+  // TERRACE 화단 (2×2 블록)
+  planterBed({ w = 2, d = 2, seed }) {
+    const W = w - 0.12;
+    const D = d - 0.12;
+    const g = group();
+    const wood = mat('#7a5236', { rough: 0.85 });
+    g.add(mesh(rbox(W, 0.42, D, 0.04), wood, { p: [0, 0.21, 0] }));
+    g.add(mesh(box(W - 0.14, 0.04, D - 0.14), mat('#3a2a1e', { rough: 1 }), { p: [0, 0.43, 0] }));
+    for (let i = 0; i < 4; i++) g.add(mesh(box(W + 0.02, 0.04, 0.05), mat('#5a3a26'), { p: [0, 0.1 + i * 0.1, D / 2], cast: false }));
+    const greens = [mat('#3f8a4a'), mat('#2f6e3b'), mat('#5aa35a')];
+    const n = Math.round(W * D * 5);
+    for (let i = 0; i < n; i++) {
+      const a = i * 2.39 + seed;
+      const r = Math.sqrt((i + 0.5) / n) * Math.min(W, D) * 0.42;
+      g.add(mesh(sphere(0.17, 10, 8), greens[i % 3], { p: [Math.cos(a) * r, 0.58 + (i % 3) * 0.08, Math.sin(a) * r], s: [1, 1.3, 1] }));
+    }
+    const flowers = ['#ff7aa8', '#ffd166', '#ffffff', '#b46bff'];
+    for (let i = 0; i < 10; i++) {
+      const a = i * 1.7 + seed;
+      const r = 0.2 + (i % 4) * 0.15;
+      g.add(mesh(sphere(0.055, 8, 6), mat(pick(flowers, i + seed), { emissive: pick(flowers, i + seed), ei: 0.15 }), { p: [Math.cos(a) * r, 0.82, Math.sin(a) * r] }));
+    }
+    // 작은 정원 랜턴
+    g.add(mesh(cyl(0.02, 0.02, 0.5, 6), mat('#2a2a30', { metal: 0.6 }), { p: [W / 2 - 0.15, 0.68, D / 2 - 0.15] }));
+    g.add(mesh(rbox(0.12, 0.14, 0.12, 0.02), mat('#fff3c0', { emissive: '#ffcf7a', ei: 1.4 }), { p: [W / 2 - 0.15, 0.96, D / 2 - 0.15], cast: false }));
+    return g;
+  },
+
+  // TERRACE 파티오 세트 (2×2 블록): 테이블 + 파라솔 + 의자
+  patioSet({ w = 2, d = 2, seed }) {
+    const W = w - 0.2;
+    const D = d - 0.2;
+    const g = group();
+    g.add(mesh(cyl(Math.min(W, D) * 0.5, Math.min(W, D) * 0.5, 0.03, 32), mat('#d8cdb8', { rough: 0.9 }), { p: [0, 0.015, 0], cast: false }));
+    g.add(mesh(cyl(0.48, 0.48, 0.05, 28), mat('#e8e2d6', { rough: 0.4 }), { p: [0, 0.6, 0] }));
+    g.add(mesh(cyl(0.05, 0.05, 0.58, 10), mat('#2a2a30', { metal: 0.7 }), { p: [0, 0.3, 0] }));
+    g.add(mesh(cyl(0.025, 0.025, 1.1, 8), mat('#e8e2d6', { metal: 0.3 }), { p: [0, 0.95, 0] }));
+    const cloth = pick(['#d94b3d', '#3d8bd9', '#e8b04a'], seed);
+    g.add(mesh(cone(0.78, 0.3, 10), mat(cloth, { rough: 0.8, side: THREE.DoubleSide }), { p: [0, 1.42, 0] }));
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2;
+      g.add(mesh(box(0.06, 0.07, 0.02), mat(i % 2 ? '#ffffff' : cloth), { p: [Math.cos(a) * 0.74, 1.26, Math.sin(a) * 0.74], r: [0, -a, 0], cast: false }));
+    }
+    const chairMat = mat('#2f6e7a', { metal: 0.3, rough: 0.5 });
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+      const c = group([], { p: [Math.cos(a) * 0.68, 0, Math.sin(a) * 0.68], r: [0, -a - Math.PI / 2, 0] });
+      c.add(mesh(rbox(0.4, 0.05, 0.38, 0.02), chairMat, { p: [0, 0.4, 0] }));
+      c.add(mesh(rbox(0.4, 0.36, 0.05, 0.02), chairMat, { p: [0, 0.6, -0.18], r: [-0.15, 0, 0] }));
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) c.add(mesh(cyl(0.02, 0.02, 0.4, 6), mat('#2a2a30', { metal: 0.6 }), { p: [sx * 0.16, 0.2, sz * 0.15] }));
+      g.add(c);
+    }
+    g.add(mesh(cyl(0.07, 0.08, 0.14, 12, true), mat('#f8f0d8', { emissive: '#ffcf7a', ei: 1.2, side: THREE.DoubleSide, transparent: true, opacity: 0.85 }), { p: [0.15, 0.7, 0.08], cast: false }));
+    return g;
+  },
+
+  // LOCKED ROOM 오래된 옷장 (벽에 붙은 고정 가구)
+  wardrobe({ w = 1, d = 1, face = { x: 0, z: 1 } }) {
+    const W = w - 0.08;
+    const D = d - 0.12;
+    const g = group();
+    const inner = group();
+    inner.add(mesh(rbox(W, 1.35, D, 0.03), mat('#4a2f20', { rough: 0.7 }), { p: [0, 0.69, 0] }));
+    inner.add(mesh(box(W + 0.08, 0.08, D + 0.08), mat('#2e1c12'), { p: [0, 1.4, 0] }));
+    inner.add(mesh(box(W * 0.6, 0.12, 0.04), mat('#2e1c12'), { p: [0, 1.5, D / 2 - 0.02] }));
+    for (const s of [-1, 1]) {
+      inner.add(mesh(box(W / 2 - 0.08, 1.1, 0.02), mat('#5c3a26', { rough: 0.6 }), { p: [s * (W / 4), 0.72, D / 2 + 0.01], cast: false }));
+      inner.add(mesh(sphere(0.03, 8, 6), mat('#c9a35a', { metal: 0.9, rough: 0.3 }), { p: [s * 0.06, 0.75, D / 2 + 0.04] }));
+    }
+    inner.add(mesh(box(0.18, 0.12, 0.12), mat(pick(PAPER, 2)), { p: [-W * 0.2, 1.5, 0] }));
+    inner.rotation.y = rotY(face);
+    g.add(inner);
+    return g;
+  },
+
+  // LOCKED ROOM 낡은 가죽 안락의자 (Mr. ODD 가 밀 수 있는 가구)
+  armchair({ face = { x: 0, z: 1 }, seed }) {
+    const g = group();
+    const inner = group();
+    const leather = mat(pick(['#6b3a24', '#4a3a5a', '#3e4a3a'], seed), { rough: 0.6 });
+    inner.add(mesh(rbox(0.78, 0.34, 0.72, 0.08), leather, { p: [0, 0.27, 0.02] }));
+    inner.add(mesh(rbox(0.78, 0.62, 0.2, 0.08), leather, { p: [0, 0.55, -0.27] }));
+    for (const s of [-1, 1]) inner.add(mesh(rbox(0.16, 0.46, 0.72, 0.07), leather, { p: [s * 0.36, 0.38, 0.02] }));
+    inner.add(mesh(rbox(0.5, 0.1, 0.5, 0.05), mat('#8a6a4a', { rough: 0.8 }), { p: [0, 0.47, 0.06] }));
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) inner.add(mesh(cyl(0.035, 0.025, 0.1, 8), mat('#2e1c12'), { p: [sx * 0.32, 0.05, sz * 0.28] }));
+    inner.add(mesh(rbox(0.3, 0.04, 0.22, 0.02), mat('#d8c9a8'), { p: [0.12, 0.54, 0.1], r: [0, 0.5, 0] }));
+    inner.rotation.y = rotY(face);
+    g.add(inner);
+    return g;
+  },
+
+  // LOCKED ROOM 괘종시계
+  grandfatherClock({ face = { x: 0, z: 1 } }) {
+    const g = group();
+    const inner = group();
+    const wood = mat('#5a3622', { rough: 0.6 });
+    inner.add(mesh(rbox(0.5, 0.3, 0.4, 0.03), wood, { p: [0, 0.15, 0] }));
+    inner.add(mesh(rbox(0.38, 0.85, 0.32, 0.03), wood, { p: [0, 0.72, 0] }));
+    inner.add(mesh(rbox(0.5, 0.42, 0.4, 0.04), wood, { p: [0, 1.35, 0] }));
+    inner.add(mesh(cyl(0.16, 0.16, 0.02, 24), mat('#efe4c8', { rough: 0.6 }), { p: [0, 1.36, 0.205], r: [Math.PI / 2, 0, 0], cast: false }));
+    inner.add(mesh(box(0.012, 0.11, 0.01), mat('#111'), { p: [0, 1.4, 0.218], r: [0, 0, 0.6], cast: false }));
+    inner.add(mesh(box(0.012, 0.08, 0.01), mat('#111'), { p: [0, 1.39, 0.218], r: [0, 0, -1.2], cast: false }));
+    inner.add(mesh(box(0.26, 0.62, 0.01), basic('#1a120c', { opacity: 0.6 }), { p: [0, 0.72, 0.165], cast: false }));
+    const pend = group([], { p: [0, 1.0, 0.15], name: 'pendulum' });
+    pend.add(mesh(cyl(0.008, 0.008, 0.4, 6), mat('#c9a35a', { metal: 0.9 }), { p: [0, -0.2, 0] }));
+    pend.add(mesh(cyl(0.06, 0.06, 0.015, 16), mat('#c9a35a', { metal: 0.9, rough: 0.25 }), { p: [0, -0.42, 0], r: [Math.PI / 2, 0, 0] }));
+    inner.add(pend);
+    inner.add(mesh(cone(0.27, 0.16, 4), wood, { p: [0, 1.64, 0], r: [0, Math.PI / 4, 0] }));
+    inner.rotation.y = rotY(face);
+    g.add(inner);
+    return g;
+  },
+});
 
 // 그 외 알 수 없는 prop → 상자
 export function buildProp(kind, ctx) {

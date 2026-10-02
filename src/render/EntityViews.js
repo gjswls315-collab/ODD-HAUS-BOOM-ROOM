@@ -4,7 +4,7 @@ import { GAME_CONFIG } from '../config/gameConfig.js';
 import { CharacterVisual } from './characters/CharacterVisual.js';
 import { buildMrOdd } from './characters/placeholders.js';
 import { rbox, cyl, sphere, torus, plane, circle, ring, mat, basic, mesh, group, damp, easeOutBack, clamp01 } from './kit.js';
-import { grooveTexture, noteTexture, glowTexture, ringTexture, eqTexture, itemIconTexture, labelTexture, arrowTexture, hazardTexture } from './textures.js';
+import { grooveTexture, noteTexture, glowTexture, ringTexture, eqTexture, itemIconTexture, labelTexture, arrowTexture, hazardTexture, waveformTexture, glyphTexture, grooveRingTexture } from './textures.js';
 
 const DIR_ANGLE = { down: 0, right: Math.PI / 2, up: Math.PI, left: -Math.PI / 2 };
 // 납작한 캐릭터(LP·피크·열쇠)는 옆면만 보이지 않도록 좌우 회전을 줄여 얼굴이 카메라 쪽으로 보이게
@@ -148,31 +148,47 @@ export class PlayerView {
 }
 
 // ── Beat Bomb ─────────────────────────────────────────────
+// ── Beat Bomb — 작은 검은 LP 퍽 + 가운데 빛나는 음표 ─────────────
+//   Beat 1 : 작은 주황 펄스      Beat 2 : 홈을 따라 도는 파란 빛      Beat 3 : 중앙이 밝아짐 → DROP
+const AMBER = new THREE.Color('#ffb347');
+const BLUE = new THREE.Color('#4fb8ff');
+const HOT = new THREE.Color('#fff4d0');
 export class BombView {
   constructor(parent, bomb, color) {
     this.root = group();
     this.body = group();
-    this.body.add(mesh(cyl(0.3, 0.34, 0.12, 28), mat('#1d1d24', { rough: 0.4, metal: 0.5 }), { p: [0, 0.06, 0] }));
-    this.body.add(mesh(torus(0.32, 0.025, 8, 32), mat('#ff7136', { emissive: '#ff7136', ei: 1.5, unique: true }), { p: [0, 0.12, 0], r: [Math.PI / 2, 0, 0], name: 'rim', cast: false }));
-    const disc = group([], { p: [0, 0.42, 0], r: [-0.35, 0, 0] });
-    const groove = mat('#ffffff', { map: grooveTexture('#2a2a30'), rough: 0.3 });
-    disc.add(mesh(cyl(0.3, 0.3, 0.07, 36), [mat('#0c0c10'), groove, groove], { r: [Math.PI / 2, 0, 0] }));
-    disc.add(mesh(circle(0.13, 24), basic('#ffffff', { map: noteTexture('#ffb347'), toneMapped: false, depthWrite: true }), { p: [0, 0, 0.037], cast: false, name: 'note' }));
-    this.body.add(disc);
-    this.disc = disc;
-    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: '#ff8a3c', transparent: true, opacity: 0.6, depthWrite: false, blending: THREE.AdditiveBlending }));
-    glow.scale.set(1.2, 1.2, 1);
-    glow.position.set(0, 0.42, 0.05);
+    const groove = mat('#ffffff', { map: grooveTexture('#16161c', 256), rough: 0.28, metal: 0.25 });
+    const vinyl = mat('#0e0e13', { rough: 0.35, metal: 0.4 });
+    // 납작한 LP 퍽 (윗면 = 레코드 홈)
+    this.body.add(mesh(cyl(0.34, 0.36, 0.13, 40), [vinyl, groove, vinyl], { p: [0, 0.075, 0] }));
+    this.body.add(mesh(cyl(0.37, 0.37, 0.025, 40), mat('#1d1d24', { rough: 0.5 }), { p: [0, 0.012, 0] }));
+    // 가운데 라벨 = 빛나는 음표 + 빛나는 중앙 링 (VIN 의 LP 몸과 구별)
+    this.label = mesh(circle(0.125, 28), basic('#ffffff', { map: noteTexture('#ffb347'), toneMapped: false, depthWrite: true }), { r: [-Math.PI / 2, 0, 0], p: [0, 0.143, 0], cast: false });
+    this.body.add(this.label);
+    this.centerRing = mesh(torus(0.14, 0.014, 8, 36), basic('#ffb347', { additive: true, opacity: 0.9, toneMapped: false }), { r: [Math.PI / 2, 0, 0], p: [0, 0.145, 0], cast: false });
+    this.body.add(this.centerRing);
+    // Beat 2: 홈을 따라 안쪽으로 감겨 들어가는 파란 빛
+    this.grooveLight = mesh(torus(1, 0.012, 6, 48), basic('#4fb8ff', { additive: true, opacity: 0, toneMapped: false }), { r: [Math.PI / 2, 0, 0], p: [0, 0.146, 0], cast: false });
+    this.body.add(this.grooveLight);
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: '#ffb347', transparent: true, opacity: 0.45, depthWrite: false, blending: THREE.AdditiveBlending }));
+    glow.scale.set(0.9, 0.9, 1);
+    glow.position.set(0, 0.3, 0);
     this.glow = glow;
     this.body.add(glow);
     this.root.add(this.body);
-    this.floorRing = mesh(ring(0.4, 0.46, 40), basic(color, { opacity: 0.85, toneMapped: false }), { r: [-Math.PI / 2, 0, 0], p: [0, 0.012, 0], cast: false });
+    // Beat 1: 바닥으로 퍼지는 작은 펄스 링
+    this.pulse = mesh(ring(0.36, 0.41, 40), basic('#ffb347', { additive: true, opacity: 0, toneMapped: false }), { r: [-Math.PI / 2, 0, 0], p: [0, 0.015, 0], cast: false });
+    this.root.add(this.pulse);
+    this.floorRing = mesh(ring(0.42, 0.47, 40), basic(color, { opacity: 0.8, toneMapped: false }), { r: [-Math.PI / 2, 0, 0], p: [0, 0.012, 0], cast: false });
     this.root.add(this.floorRing);
-    this.fuseArc = mesh(ring(0.3, 0.38, 40), basic('#ffd166', { opacity: 0.9, toneMapped: false }), { r: [-Math.PI / 2, 0, 0], p: [0, 0.013, 0], cast: false });
+    this.fuseArc = mesh(ring(0.47, 0.51, 40), basic('#ffd166', { opacity: 0.75, toneMapped: false }), { r: [-Math.PI / 2, 0, 0], p: [0, 0.013, 0], cast: false });
     this.root.add(this.fuseArc);
     this.lastFrac = -1;
+    this.lastBeat = -1;
+    this.pulseT = 1;
     this.t = 0;
     this.spawn = 0;
+    this.col = new THREE.Color();
     parent.add(this.root);
   }
 
@@ -181,65 +197,140 @@ export class BombView {
     this.spawn = Math.min(1, this.spawn + dt * 6);
     this.root.position.set(pos.x, pos.y, pos.z);
     const frac = Math.max(0, bomb.fuse / bomb.fuseTotal);
-    // 카운트가 줄수록 빠르게 비트
-    const bpm = 2 + (1 - frac) * 7;
-    const beat = Math.pow(Math.max(0, Math.sin(this.t * bpm * Math.PI)), 6);
+    const progress = 1 - frac;
+    const stage = progress < 1 / 3 ? 1 : progress < 2 / 3 ? 2 : 3;
+    const local = (progress * 3) % 1;
     const drop = bomb.state === 'DROP';
     const s = easeOutBack(this.spawn);
+
+    // 박자: 단계마다 빨라진다
+    const bps = stage === 1 ? 2 : stage === 2 ? 3 : 5;
+    const beatIdx = Math.floor(this.t * bps);
+    const beat = Math.pow(Math.max(0, Math.cos((this.t * bps - beatIdx) * Math.PI * 0.5)), 8);
+    if (beatIdx !== this.lastBeat) {
+      this.lastBeat = beatIdx;
+      this.pulseT = 0;
+    }
+    this.pulseT += dt;
+
+    // Beat 1 — 주황 펄스 / Beat 2·3 — 파란 펄스(약하게)
+    const pk = clamp01(this.pulseT / 0.5);
+    this.pulse.scale.setScalar(1 + pk * (stage === 1 ? 0.9 : 0.5));
+    this.pulse.material.opacity = (1 - pk) * (stage === 1 ? 0.85 : 0.35);
+    this.pulse.material.color.copy(stage === 1 ? AMBER : BLUE);
+
+    // Beat 2 — 홈을 따라 바깥 → 안쪽으로 감기는 파란 빛
+    if (stage >= 2) {
+      const r = stage === 2 ? 0.33 - local * 0.17 : 0.16;
+      this.grooveLight.scale.setScalar(r);
+      this.grooveLight.material.opacity = stage === 2 ? 0.95 : 0.4 + beat * 0.4;
+    } else this.grooveLight.material.opacity = 0;
+
+    // Beat 3 — 중앙 음표가 점점 밝아진다
+    const heat = stage === 3 ? local : 0;
+    this.col.copy(AMBER).lerp(HOT, heat);
+    this.centerRing.material.color.copy(stage === 2 ? this.col.copy(AMBER).lerp(BLUE, 0.35) : this.col);
+    this.centerRing.material.opacity = 0.65 + beat * 0.35 + heat * 0.3;
+    this.label.material.color.setScalar(1 + heat * 1.6 + beat * 0.25);
+    this.glow.material.color.copy(stage === 3 ? HOT : stage === 2 ? BLUE : AMBER);
+
     if (drop) {
       const k = 1 - bomb.fuse / GAME_CONFIG.bomb.dropTime;
-      this.body.scale.set(s * (1 + k * 0.35), s * (1 - k * 0.4), s * (1 + k * 0.35));
-      this.glow.material.opacity = 0.6 + k;
-      this.glow.material.color.set('#fff1c0');
+      this.body.scale.set(s * (1 + k * 0.3), s * (1 - k * 0.35), s * (1 + k * 0.3));
+      this.glow.material.opacity = 0.7 + k;
+      this.glow.scale.setScalar(0.9 + k * 1.2);
     } else {
-      this.body.scale.setScalar(s * (1 + beat * 0.12));
-      this.glow.material.opacity = 0.35 + beat * 0.5;
+      this.body.scale.setScalar(s * (1 + beat * (stage === 3 ? 0.1 : 0.05)));
+      this.glow.material.opacity = 0.25 + beat * 0.35 + heat * 0.5;
+      this.glow.scale.setScalar(0.8 + heat * 0.6);
     }
-    this.disc.rotation.z += dt * (2 + (1 - frac) * 10);
-    const rim = this.body.getObjectByName('rim');
-    rim.material.emissiveIntensity = 1 + beat * 3 + (drop ? 4 : 0);
+    this.body.position.y = stage === 3 ? beat * 0.05 : 0;
+    this.body.rotation.y += dt * (1.5 + progress * 9);
+
     if (Math.abs(frac - this.lastFrac) > 0.02) {
-      this.fuseArc.geometry = new THREE.RingGeometry(0.3, 0.38, 40, 1, Math.PI / 2, Math.PI * 2 * Math.max(0.001, frac));
+      this.fuseArc.geometry = new THREE.RingGeometry(0.47, 0.51, 40, 1, Math.PI / 2, Math.PI * 2 * Math.max(0.001, frac));
       this.lastFrac = frac;
     }
     this.fuseArc.material.color.set(frac < 0.3 ? '#ff4d4d' : '#ffd166');
     this.floorRing.visible = pos.y < 0.05;
     this.fuseArc.visible = pos.y < 0.05;
+    this.pulse.visible = pos.y < 0.05;
   }
 
   dispose() {
     this.root.removeFromParent();
+    for (const m of [this.label, this.centerRing, this.grooveLight, this.pulse, this.floorRing, this.fuseArc]) m.material.dispose();
+    this.glow.material.dispose();
   }
 }
 
-// ── Sound Wave (폭발) ─────────────────────────────────────
+// ── Sound Wave (폭발) — 불꽃이 아니라 바닥을 따라 퍼지는 파란/보라 음파 ─────────
+//   칸마다 레코드 홈 동심원 · 팔을 따라 얇은 waveform/EQ 라인 · 떠오르는 ♪♫ · 끝에서 튀는 EQ 바
 const WAVE_A = new THREE.Color('#54c7ff');
 const WAVE_B = new THREE.Color('#b46bff');
+const DIR_V = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 export class WaveView {
   constructor(parent, explosion, toWorld, { pulse = false } = {}) {
     this.root = group();
     this.t = 0;
-    this.life = GAME_CONFIG.wave.lingerTime + 0.35;
+    this.life = GAME_CONFIG.wave.lingerTime + 0.6;
     this.tiles = [];
-    const ringTex = ringTexture();
-    const eq = eqTexture();
+    this.strips = [];
+    this.notes = [];
+    this.bars = [];
+    const grooveTex = grooveRingTexture();
     const cells = explosion.cells || [];
     const c0 = toWorld(explosion.x, explosion.y);
+    const tint = (d) => (pulse ? new THREE.Color('#ffd166') : WAVE_A.clone().lerp(WAVE_B, Math.min(1, d / 5)));
     for (const c of cells) {
       const w = toWorld(c.x, c.y);
       const d = Math.abs(c.x - explosion.x) + Math.abs(c.y - explosion.y);
-      const col = WAVE_A.clone().lerp(WAVE_B, Math.min(1, d / 5));
-      if (pulse) col.set('#ffd166');
-      const tile = mesh(plane(1.0, 1.0), basic(col, { map: ringTex, additive: true, opacity: 0.0, toneMapped: false }), { r: [-Math.PI / 2, 0, 0], p: [w.x, 0.03, w.z], cast: false });
+      const tile = mesh(plane(1.0, 1.0), basic(tint(d), { map: grooveTex, additive: true, opacity: 0, toneMapped: false }), { r: [-Math.PI / 2, 0, (c.x * 7 + c.y * 3) % 6], p: [w.x, 0.025, w.z], cast: false });
       this.root.add(tile);
-      const bar = mesh(cyl(0.34, 0.42, 0.9, 20, true), basic(col, { map: eq, additive: true, opacity: 0, side: THREE.DoubleSide, toneMapped: false }), { p: [w.x, 0.45, w.z], cast: false });
-      this.root.add(bar);
-      this.tiles.push({ tile, bar, delay: d * 0.025 });
+      this.tiles.push({ tile, delay: d * 0.03 });
+      // 떠오르는 음표 (2칸마다)
+      if (d > 0 && d % 2 === 1) {
+        const glyph = new THREE.Sprite(new THREE.SpriteMaterial({ map: glyphTexture(d % 4 === 1 ? '♫' : '♪', '#ffffff'), color: tint(d), transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+        glyph.scale.set(0.42, 0.42, 1);
+        glyph.position.set(w.x + ((c.x * 13) % 3) * 0.08 - 0.08, 0.35, w.z);
+        this.root.add(glyph);
+        this.notes.push({ s: glyph, delay: d * 0.03 + 0.05, x: glyph.position.x });
+      }
     }
-    // 중심 폭발
+    // 팔마다 바닥에 깔리는 waveform / EQ 라인
+    const arms = explosion.arms || {};
+    const wf = waveformTexture();
+    for (const dir of Object.keys(DIR_V)) {
+      const n = arms[dir] || 0;
+      if (n <= 0) continue;
+      const [vx, vz] = DIR_V[dir];
+      const len = n + 0.15;
+      const tex = wf.clone();
+      tex.needsUpdate = true;
+      tex.repeat.set(Math.max(1, len / 2.5), 1);
+      const strip = mesh(plane(len, 0.42), basic(tint(n), { map: tex, additive: true, opacity: 0, toneMapped: false }), { cast: false });
+      strip.rotation.set(-Math.PI / 2, 0, vx !== 0 ? 0 : Math.PI / 2);
+      strip.position.set(c0.x + (vx * len) / 2, 0.035, c0.z + (vz * len) / 2);
+      this.root.add(strip);
+      this.strips.push({ strip, tex, dir: vx + vz > 0 ? 1 : -1 });
+      // 팔 끝에서 튀는 작은 EQ 바
+      const tip = { x: c0.x + vx * n, z: c0.z + vz * n };
+      for (let i = 0; i < 3; i++) {
+        const bar = mesh(rbox(0.07, 0.5, 0.07, 0.02), basic(tint(n + 1), { additive: true, opacity: 0, toneMapped: false }), { cast: false });
+        const off = (i - 1) * 0.16;
+        bar.position.set(tip.x + (vz !== 0 ? off : 0), 0.25, tip.z + (vx !== 0 ? off : 0));
+        this.root.add(bar);
+        this.bars.push({ bar, delay: n * 0.03, ph: i * 1.7 + n });
+      }
+    }
+    // 중심: 바닥으로 퍼지는 레코드 홈 링 (구체 불꽃 대신)
     if (!pulse) {
-      this.core = mesh(sphere(0.5, 20, 14), basic('#e8f6ff', { additive: true, opacity: 0.9, toneMapped: false }), { p: [c0.x, 0.45, c0.z], cast: false });
+      this.core = mesh(plane(1, 1), basic('#e8f6ff', { map: grooveTex, additive: true, opacity: 0.95, toneMapped: false }), { r: [-Math.PI / 2, 0, 0], p: [c0.x, 0.04, c0.z], cast: false });
       this.root.add(this.core);
+      this.coreNote = new THREE.Sprite(new THREE.SpriteMaterial({ map: glyphTexture('♫', '#9fdcff'), color: '#ffffff', transparent: true, opacity: 0.95, depthWrite: false, blending: THREE.AdditiveBlending }));
+      this.coreNote.scale.set(0.7, 0.7, 1);
+      this.coreNote.position.set(c0.x, 0.5, c0.z);
+      this.root.add(this.coreNote);
     }
     parent.add(this.root);
   }
@@ -247,31 +338,55 @@ export class WaveView {
   update(dt) {
     this.t += dt;
     const L = GAME_CONFIG.wave.lingerTime;
+    const env = (lt) => clamp01(lt / 0.06) * (1 - clamp01((lt - L) / 0.35));
     for (const tl of this.tiles) {
       const lt = this.t - tl.delay;
       if (lt < 0) continue;
-      const fadeIn = clamp01(lt / 0.06);
-      const fadeOut = 1 - clamp01((lt - L) / 0.3);
-      const a = fadeIn * fadeOut;
-      tl.tile.material.opacity = a * 0.95;
-      tl.tile.scale.setScalar(0.7 + clamp01(lt / 0.25) * 0.35);
-      tl.bar.material.opacity = a * 0.5;
-      tl.bar.scale.set(1, 0.4 + Math.abs(Math.sin(lt * 18 + tl.delay * 30)) * 0.9, 1);
-      tl.bar.material.map.offset.y -= dt * 2;
+      tl.tile.material.opacity = env(lt) * 0.9;
+      tl.tile.scale.setScalar(0.65 + clamp01(lt / 0.25) * 0.4);
+      tl.tile.rotation.z += dt * 1.5;
+    }
+    for (const st of this.strips) {
+      st.strip.material.opacity = env(this.t) * 0.95;
+      st.tex.offset.x -= dt * 2.2 * st.dir;
+    }
+    for (const n of this.notes) {
+      const lt = this.t - n.delay;
+      if (lt < 0) continue;
+      n.s.material.opacity = clamp01(lt / 0.1) * (1 - clamp01((lt - 0.35) / 0.45));
+      n.s.position.y = 0.35 + lt * 1.1;
+      n.s.position.x = n.x + Math.sin(lt * 9) * 0.06;
+    }
+    for (const b of this.bars) {
+      const lt = this.t - b.delay;
+      if (lt < 0) continue;
+      b.bar.material.opacity = env(lt) * 0.8;
+      const h = 0.25 + Math.abs(Math.sin(lt * 16 + b.ph)) * 0.9;
+      b.bar.scale.set(1, h, 1);
+      b.bar.position.y = 0.25 * h;
     }
     if (this.core) {
-      const k = clamp01(this.t / 0.35);
-      this.core.scale.setScalar(0.6 + k * 1.4);
-      this.core.material.opacity = 0.9 * (1 - k);
+      const k = clamp01(this.t / 0.4);
+      this.core.scale.setScalar(0.6 + k * 2.2);
+      this.core.material.opacity = 0.95 * (1 - k);
+      this.coreNote.material.opacity = 0.95 * (1 - clamp01(this.t / 0.6));
+      this.coreNote.position.y = 0.5 + this.t * 1.2;
     }
     return this.t < this.life;
   }
 
   dispose() {
     this.root.removeFromParent();
-    for (const tl of this.tiles) {
-      tl.tile.material.dispose();
-      tl.bar.material.dispose();
+    for (const tl of this.tiles) tl.tile.material.dispose();
+    for (const st of this.strips) {
+      st.strip.material.dispose();
+      st.tex.dispose();
+    }
+    for (const n of this.notes) n.s.material.dispose();
+    for (const b of this.bars) b.bar.material.dispose();
+    if (this.core) {
+      this.core.material.dispose();
+      this.coreNote.material.dispose();
     }
   }
 }

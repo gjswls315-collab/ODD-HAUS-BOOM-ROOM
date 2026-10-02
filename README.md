@@ -4,7 +4,7 @@
 > ODD HAUS 캐릭터들이 모두 같은 규칙과 조작으로 경쟁하는 3D 쿼터뷰 파티 폭탄 게임.
 > 캐릭터 차이는 스킬이 아니라 **SPEED · BOMB · WAVE 의 시작값(start)과 최대값(max)** 뿐입니다.
 
-기획 기준: `ODD_HAUS_BOOM_ROOM_Interactive_GDD_v3.html` (V3 FINAL CORE RULES) + 구현 마스터 프롬프트 — 캐릭터 액티브 스킬 없음, 능력치·아이템·맵 전략 게임.
+기획 기준: `ODD_HAUS_BOOM_ROOM_Interactive_GDD_v3.html` (V3 FINAL CORE RULES) + **BOOM ROOM v4 — Bigger Arena / Smarter CPU / Stronger ODD HAUS Identity** + 구현 마스터 프롬프트 — 캐릭터 액티브 스킬 없음, 능력치·아이템·맵 전략 게임.
 
 ---
 
@@ -29,7 +29,7 @@ npm run build:single   # dist/boom-room-single.html — JS·CSS 를 한 파일�
 /?play=battle&stage=djBooth&p=cpu:vin,cpu:picker,cpu:aa,cpu:rex&fast=1   # 관전
 ```
 
-`F3` 디버그 오버레이(현재/최대 능력치, 이동속도, GLB 사용 여부) · `M` 음소거
+`F3` 디버그 오버레이(현재/최대 능력치, 이동속도, GLB 사용 여부) · `M` 음소거 · `N` 미니맵 켜기/끄기 (터치: 타이머 탭)
 
 ## 조작 — 모든 캐릭터 동일 (캐릭터 전용 키 없음, Q 키 미사용)
 
@@ -73,7 +73,7 @@ npm run build:single   # dist/boom-room-single.html — JS·CSS 를 한 파일�
 CHARACTER = Start Stats + Max Stats
 ITEM      = Stat Up / Common Special Item
 COMBAT    = Beat Bomb → Sound Wave → Sound Capsule
-MAP       = 13×11 논리 격자 + 공용 기믹 / 이벤트
+MAP       = 17×15 ~ 19×17 논리 격자 (v4) + 공용 기믹 / 이벤트
 ```
 
 1. **이동** — 4방향, 모두 동일 (코너 보정 포함)
@@ -116,20 +116,51 @@ MAX 총합은 맞추지 않고 장단점을 명확하게 했습니다. SPEED 레
 아이템 키는 E 하나입니다. 우선순위: 갇힘+NEEDLE 탈출 → GLOVE 던지기 → ROLLER SKATES → REMOTE.
 KICK·GLOVE·REMOTE 를 "그 판 동안 유지되는 능력"으로 둔 것은 키 하나로 여러 특수 아이템을 함께 쓰기 위한 구현 결정입니다 (`itemConfig.js` 의 `kind` 로 변경 가능).
 
-### 스테이지 6종 (`src/config/stageConfig.js`) — GDD v3 13×11 격자 그대로, 모든 기믹 공용
+### 스테이지 6종 (`src/config/stageConfig.js`) — v4 큰 아레나, 모든 기믹 공용
 
-`#` SOLID · `B` BREAKABLE · `.` 이동 · `S` SPAWN · `G` GIMMICK
+`#` SOLID(실제 가구) · `B` BREAKABLE(스테이지 소품) · `.` 이동 · `S` SPAWN · `G` GIMMICK
 
-| # | Stage | G / 공용 기믹 | 이벤트 |
-| --- | --- | --- | --- |
-| 01 | LOUNGE (기본기) | 중앙 Floor Lamp. `###` = 소파(이동 가능), 단독 `#` = 커피테이블·사이드테이블·화분 | MR. ODD 가 소파를 밀어 통로 변경 |
-| 02 | LP LIBRARY (좁은 통로) | 중앙 청음 스테이션. 금색 Record Box 2개를 부수면 숨은 선반이 열려 새 경로 | 예고 후 대형 Rolling LP 가 한 행을 굴러가며 상자를 부수고 플레이어·아이템을 밀어냄 |
-| 03 | STUDIO (기계 기믹) | G = Amp 장비 4개. 아무 Wave 나 G 에 닿으면 장비가 오르내려 벽 ↔ 통로 전환 | REC 예고 후 올라와 있는 장비 라인에 Sound Pulse |
-| 04 | DJ BOOTH (움직이는 맵) | G = Turntable 6개. 일정 박자마다 둘레 8칸(벽·상자·폭탄·아이템)이 회전해 길 구조 변경 | Speaker Drop — 짧은 시간 Bomb 카운트 가속 |
-| 05 | TERRACE (개방형 + 긴 Wave) | G = 바람 장치. 벽이 적어 WAVE 가 긴 캐릭터가 유리 | Wind — 방향 예고 후 플레이어·아이템 한 칸 밀림 |
-| 06 | LOCKED ROOM (맵 변화) | 중앙 GGG = Old Audio Machine. 벽에 붙지 않은 가구 8개가 이동 가능 | MR. ODD 가 가구 2개씩 이동(. ↔ #) · 암전 · 상자 낙하 |
+| # | Stage | 크기 | SOLID / BREAKABLE / 빈 칸 | G / 공용 기믹 | 이벤트 |
+| --- | --- | --- | --- | --- | --- |
+| 01 | LOUNGE (기본기) | 17×15 | 23% / 29% (56) / 48% | 중앙 Floor Lamp 를 소파 6개가 둘러쌈(`###`, Mr. ODD 가 밀 수 있음). 단독 `#` = 사이드테이블·화분·스피커·커피테이블·플로어 램프·책장 | MR. ODD 가 소파를 밀어 통로 변경 |
+| 02 | LP LIBRARY (좁은 통로) | 17×15 | 24% / 27% (52) / 49% | 긴 선반 미로 + 중앙 청음 스테이션. 금색 Record Box 2개를 부수면 숨은 선반이 열려 위·아래 지름길 | 예고 후 대형 Rolling LP 가 3·11행을 굴러가며 상자를 부수고 플레이어·아이템을 밀어냄 |
+| 03 | STUDIO (기계 기믹) | 17×15 | 23% / 28% (54) / 49% | G = Amp 장비 4개. 아무 Wave 나 G 에 닿으면 위·아래 ↔ 좌·우 장비가 오르내려 벽 ↔ 통로 전환 | REC 예고 후 올라와 있는 장비 라인에 Sound Pulse |
+| 04 | DJ BOOTH (움직이는 맵) | 17×15 | 23% / 27% (52) / 50% | G = Turntable 5개. 일정 박자마다 둘레 8칸(가구·상자·폭탄·아이템)이 회전해 길 구조 변경 | Speaker Drop — 짧은 시간 Bomb 카운트 가속 |
+| 05 | TERRACE (개방형 + 긴 Wave) | 19×15 | 22% / 28% (62) / 50% | 화단·파티오 세트가 2×2 블록으로 모여 1·4·7·10·13행은 가로로 끝까지 열림 — WAVE 가 긴 캐릭터가 유리. 중앙 G = 바람 장치 | Wind — 방향 예고 후 플레이어·아이템 한 칸 밀림 |
+| 06 | LOCKED ROOM (맵 변화) | 19×17 | 24% / 27% (68) / 49% | 넓지만 오래된 가구가 빽빽해 동선이 좁음. 중앙 GGG = Old Audio Machine. 캐비닛·안락의자는 이동 가능, 벽에 붙은 옷장·괘종시계는 고정 | MR. ODD 가 가구 2개씩 이동(. ↔ #) · 암전 · 상자 낙하 |
+
+- 모든 맵은 좌우·상하 대칭이고, 4인 시작 위치 주변은 가로 2칸 · 세로 2칸이 비어 있습니다.
+- BREAKABLE 50~68개 × 드랍 확률(기본 65%, Terrace 60%, Locked Room 56%) → **한 판 아이템 약 34~38개**. 모두가 MAX 까지 가지는 못합니다.
+- 스테이지별 BREAKABLE: Lounge LP 박스·책 더미·잡지 박스·쿠션 / LP Library 레코드 크레이트·LP 더미·골판지 상자 / Studio 케이블 케이스·장비 상자·헤드폰 케이스 / DJ Booth 바이닐 크레이트·플라이트 케이스·스피커 케이스 / Terrace 작은 화분·원예 상자·접이식 의자 / Locked Room 오래된 상자·천 덮인 작은 물건·오래된 오디오 케이스
+- `#` 는 벽 블록이 아니라 실제 가구로 보입니다 (소파, 커피테이블, 스피커, 책장, 플로어 램프, 화단, 옷장 …). 대칭 위치에는 같은 가구가 놓입니다.
 
 맵은 ASCII 논리 격자로 정의되고, `#` 를 어떤 가구로 보여줄지(`solids`)와 `G` 의 기믹은 스테이지별 설정입니다. 3D 메쉬(`src/render/propFactory.js`)는 그리드 규칙과 분리되어 있습니다.
+
+### 경기 템포 (v4)
+
+- 한 판 **5분** (`gameConfig.match`) — 0~70초 **초반 파밍** → **중반 교전** → 200초~ **후반 혼란**
+- 후반에는 스테이지 기믹 / MR. ODD 이벤트 간격이 0.65배로 짧아집니다 (`gameConfig.tempo`, `GameManager.tempoInterval`)
+
+### CPU (v4: State Machine + A* + Stuck Recovery) — `src/core/ai/BotBrain.js`
+
+```
+SCAN → ITEM SEEK → ATTACK → ESCAPE → POSITIONING → SCAN
+```
+
+- 우선순위: ① 위험 지역 탈출 ② 갇히지 않는 위치 확보 ③ 필요한 성장 아이템 ④ 부술 상자 접근 ⑤ 상대 동선 차단 ⑥ Beat Bomb 설치 ⑦ 특수 아이템 ⑧ 상대 추적
+- **A\***: 칸마다 "곧 터질 칸" 비용, 지나가는 순간 터지는 칸은 통과 불가. 평소 이동은 위험 칸을 아예 피해 ESCAPE ↔ 이동 왕복이 생기지 않습니다
+- **STUCK CHECK**: 같은 칸에 1.2초 이상 → 경로 폐기 → 새 도달 가능 칸 → 없으면 주변 안전 칸. CPU 는 멈춰 서 있지 않습니다
+- **필요 기반 아이템**: MAX 인 능력치 아이템은 무시, 가장 부족한 능력치 우선 (예: SPEED 2/5 · BOMB 3/3 · WAVE 1/4 → WAVE UP > SPEED UP > 특수 > BOMB UP 무시)
+- **안전한 설치**: 폭발 전에 도달 가능한, 숨 쉴 공간이 있는 안전 칸이 있을 때만 Beat Bomb 을 놓습니다. 가상 폭탄으로 상대가 피할 칸 수를 계산해 동선을 막습니다
+- 초반엔 파밍, 후반엔 추적 비중이 커집니다. REMOTE 를 가진 상대의 폭탄, DJ BOOTH 턴테이블 회전도 위험으로 계산합니다
+
+### 카메라 · 화면 (v4)
+
+- **Soft Follow + Dynamic Zoom** — 살아 있는 플레이어(사람 우선)의 중심을 부드럽게 따라가고, 가까우면 확대 / 멀면 축소. 최대 축소 제한이 있어 큰 맵은 일부가 화면 밖으로 나갈 수 있습니다 (`CAMERA_CONFIG` in `GameRenderer.js`)
+- **미니맵** (선택) — 오른쪽 아래(터치: 타이머 아래), 현재 화면 영역 표시. `N` 키 / 타이머 탭으로 토글
+- **격자선 없는 바닥** — 판자 이음새 · 파케이 결 · 타일 음영 · 데크 틈 · 러그 문양 · 빛 웅덩이가 칸 경계에 맞춰 있어 "보드게임판이 된 ODD HAUS 방"처럼 칸이 읽힙니다
+- **Beat Bomb** — 작은 검은 LP 퍽 + 가운데 빛나는 음표/링. Beat 1 주황 펄스 → Beat 2 홈을 따라 도는 파란 빛 → Beat 3 중앙이 밝아짐 → DROP
+- **Sound Wave** — 불꽃이 아니라 바닥을 따라 퍼지는 파란/보라 음파: 레코드 홈 동심원, 얇은 waveform/EQ 라인, 떠오르는 ♪♫, 팔 끝 EQ 바
 
 ### 게임 모드
 
@@ -164,13 +195,13 @@ src/
 │   ├── HouseEventManager.js    MR. ODD IS COMING — 경고 → 그리드 변경
 │   ├── modes.js                BATTLE / TEAM 규칙
 │   ├── gimmicks/               routeCrates, rollingLp, gates, recPulse, turntables, speakerDrop, wind, doors
-│   └── ai/BotBrain.js          CPU (위험 지도 + 경로 유지)
+│   └── ai/BotBrain.js          CPU — State Machine + A* + Stuck Recovery (위험 지도, 필요 기반 아이템, 안전 설치)
 ├── render/                     ← Three.js 3D Quarter-view
-│   ├── GameRenderer.js         PerspectiveCamera(50° 하향, 아레나 자동 맞춤), 조명, 이벤트 연출
+│   ├── GameRenderer.js         PerspectiveCamera(50° 하향) Soft Follow + Dynamic Zoom, 조명, 이벤트 연출
 │   ├── StageView.js            바닥/벽/배경 + 그리드 그룹 ↔ 메쉬 재조정
 │   ├── EntityViews.js          PlayerRoot(VisualModel/BombOrigin/ItemOrigin/PlayerIndicator), Beat Bomb, Sound Wave, 아이템, 경고, Rolling LP, MR. ODD
 │   ├── characters/             CharacterVisual(GLB 우선 → 3D Placeholder), placeholders
-│   ├── propFactory.js          스테이지 소품 30여 종 (정적 메쉬 자동 병합)
+│   ├── propFactory.js          스테이지 가구·소품 50여 종 (정적 메쉬 자동 병합)
 │   ├── Fx.js / textures.js / kit.js / PortraitRenderer.js
 ├── ui/UIManager.js, styles.css ← 타이틀 / 캐릭터 선택(START·MAX) / 스테이지 선택 / HUD / 일시정지 / 결과
 ├── input/InputManager.js       키보드 + 게임패드 → intent
@@ -183,17 +214,30 @@ src/
 - **게임 로직은 공통, 캐릭터 차이는 데이터** — `VinController` 같은 캐릭터별 컨트롤러 없음
 - 3D 그래픽과 게임 로직 그리드 분리 → 메쉬/GLB 를 바꿔도 판정 동일, 추후 온라인 동기화 기반
 - 애니메이션 personality 만 캐릭터별 (`placeStyle`: VIN 차분히 / PICKER 툭 던지듯 / A.A. 묵직하게 / LOCKE 주변 확인 / REX 무겁게 / BUDDY 앞발로 / BULLY 차듯이)
+- 능력치는 옷으로 표현하지 않고 자세/움직임으로 (`idle`: PICKER 앞으로 기울어 조급함 · REX 낮은 무게중심에 느림 · BUDDY 통통 · A.A. 졸린 듯 흔들림 · LOCKE 주변 확인)
+- Beat Bomb 을 놓을 때는 모든 캐릭터가 같은 **music pulse ring** 이 몸·손 주위로 퍼집니다
 
 ## 캐릭터 GLB
 
 `public/assets/characters/<id>/...glb` 에 넣으면 자동 사용 (경로표: `public/assets/characters/README.md`).
-없으면 원본 디자인 특징(VIN 검은 LP + 큰 눈, PICKER 빨간 피크 + 화난 눈, A.A. 비니 쓴 노란 배터리, LOCKE 열쇠 머리 + 갈색 모자, REX 왕관 + 빨간 망토, BUDDY 크림색 강아지, BULLY 뒤로 쓴 빨간 모자 + 기타, MR. ODD 곱슬머리 + 콧수염 + 체크 셔츠)을 따른 **3D Placeholder** 를 사용합니다. 2D Sprite 대체는 하지 않습니다.
+없으면 캐릭터 업그레이드 시트를 따른 **3D Placeholder** 를 사용합니다. 2D Sprite 대체는 하지 않습니다.
+
+| 캐릭터 | v4 Placeholder 포인트 |
+| --- | --- |
+| VIN | 더 두꺼운 LP 몸, 빛을 받으면 보이는 홈, 더 큰 빨간 신발 (Beat Bomb 은 빛나는 중앙 링으로 구별) |
+| PICKER | 더 긴 아래 끝 · 넓은 윗면, 큰 X 반창고, 진한 눈썹, 검은 팔다리 |
+| A.A. | 큰 금속 캡, 빵빵한 비니, 선명한 노랑/파랑, 작은 충전 LED, 졸린 눈 |
+| LOCKE | 과장된 열쇠 톱니, 긴 몸통, 작은 모자 · 배낭, 초록 재킷, 오래된 황동 |
+| REX | 넓은 받침, 큰 왕관 · 망토(움직임), 작은 신발, 나무 + 금 체스 킹 |
+| BUDDY | 귀 · 볼 · 가슴 · 꼬리의 두툼한 털 뭉치, 큰 파랑/노랑 넥타이, 이름표 |
+| BULLY | 큰 빨간 기타, 뒤로 과장된 검은 모자 · 금발, 검은 티(해골) + 카키 바지 |
+| MR. ODD | 더 큰 배 · 어깨, 작은 머리, 굵은 빨간 체크 가운, 머그컵 · 끈 벨트 · 슬리퍼 (플레이 불가) |
 
 ---
 
 ## 테스트 (마스터 프롬프트 39절 기준)
 
-`npm test` — 70개
+`npm test` — 86개
 
 | 39절 기준 | 테스트 |
 | --- | --- |
@@ -203,7 +247,8 @@ src/
 | REX: Wave Range 차이 | 〃 |
 | 7명 모두 Move / Bomb / Item / Trap / Victory 동일 시스템 | 〃 |
 | Beat Bomb · Wave · Chain Reaction · 아이템 10종 · NEEDLE · 포획/구출 · 팀 모드 | `bombWave.test.js`, `itemsTrap.test.js` |
-| 6개 맵이 GDD v3 13×11 격자와 동일 · 기믹 · MR. ODD House Event | `stages.test.js` |
+| 6개 v4 맵 크기 · 대칭 · SOLID/BREAKABLE/빈 칸 비율 · 시작 위치 여유 · 가구형 SOLID · 아이템 수 · 기믹 · MR. ODD House Event · 경기 템포 | `stages.test.js` |
+| CPU 상태 이름 · 필요 기반 아이템 · 안전한 폭탄 설치 · ESCAPE · STUCK CHECK · 멈추지 않는 CPU | `botBrain.test.js` |
 | 스킬/캐릭터별 컨트롤러/Q 바인딩 재유입 방지, 코어의 Three.js 비의존 | `architecture.test.js` |
 | 모든 스테이지 × BATTLE/TEAM, CPU 4인 150초 무오류 | `architecture.test.js` |
 

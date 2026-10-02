@@ -43,79 +43,196 @@ function rand(seed) {
 }
 
 // ── 바닥: 셀 정렬 원목 / 타일 + 은은한 체커 (그리드 가독성) ─────────
-export function floorTexture(theme, W, H, style = 'wood') {
+// v4: 바닥에 격자선을 그리지 않는다. 대신 판자 이음새 / 파케이 방향 / 타일 결 / 데크 틈이
+// 칸 경계에 맞춰 있어 "보드게임판이 된 방"처럼 자연스럽게 칸이 읽힌다.
+//   planks  : 반 칸 폭 판자, 이음매는 칸 경계에서 엇갈림 (Lounge / Locked Room)
+//   parquet : 칸마다 결 방향이 바뀌는 바스켓 위브 (LP Library)
+//   tiles   : 칸 크기 고무/비닐 타일, 아주 옅은 경계 음영 (Studio / DJ Booth)
+//   deck    : 세로 데크 보드, 칸 경계에서 이음 (Terrace)
+export function floorTexture(theme, W, H, style = 'planks') {
   return cached(`floor-${theme.a}-${W}-${H}-${style}`, () => {
     const S = 64;
     const c = canvas(W * S, H * S);
     const g = c.getContext('2d');
     const r = rand(1234);
-    for (let y = 0; y < H; y++) {
-      for (let x = 0; x < W; x++) {
-        const base = (x + y) % 2 === 0 ? theme.a : theme.b;
-        g.fillStyle = base;
-        g.fillRect(x * S, y * S, S, S);
-        if (style === 'wood') {
-          // 셀당 판자 2장
-          for (let k = 0; k < 2; k++) {
-            const py = y * S + k * (S / 2);
-            g.fillStyle = shade(base, (r() - 0.5) * 0.05);
-            g.fillRect(x * S, py, S, S / 2);
-            g.strokeStyle = 'rgba(0,0,0,0.08)';
-            for (let i = 0; i < 4; i++) {
-              g.beginPath();
-              const gy = py + 4 + r() * (S / 2 - 8);
-              g.moveTo(x * S, gy);
-              g.bezierCurveTo(x * S + S * 0.3, gy + (r() - 0.5) * 4, x * S + S * 0.7, gy + (r() - 0.5) * 4, x * S + S, gy);
-              g.stroke();
-            }
-            g.fillStyle = theme.line;
-            g.globalAlpha = 0.55;
-            g.fillRect(x * S, py, S, 1.5);
-            g.globalAlpha = 1;
-          }
-        } else if (style === 'tile') {
-          g.fillStyle = shade(base, (r() - 0.5) * 0.04);
-          g.fillRect(x * S + 2, y * S + 2, S - 4, S - 4);
-        } else if (style === 'deck') {
+    g.fillStyle = theme.a;
+    g.fillRect(0, 0, W * S, H * S);
+    const grain = (x0, y0, w, h, vertical, n = 4) => {
+      g.strokeStyle = 'rgba(0,0,0,0.07)';
+      g.lineWidth = 1;
+      for (let i = 0; i < n; i++) {
+        g.beginPath();
+        if (vertical) {
+          const gx = x0 + 3 + r() * (w - 6);
+          g.moveTo(gx, y0);
+          g.bezierCurveTo(gx + (r() - 0.5) * 4, y0 + h * 0.3, gx + (r() - 0.5) * 4, y0 + h * 0.7, gx, y0 + h);
+        } else {
+          const gy = y0 + 3 + r() * (h - 6);
+          g.moveTo(x0, gy);
+          g.bezierCurveTo(x0 + w * 0.3, gy + (r() - 0.5) * 4, x0 + w * 0.7, gy + (r() - 0.5) * 4, x0 + w, gy);
+        }
+        g.stroke();
+      }
+    };
+    const seam = (x, y, w, h, a = 0.35) => {
+      g.fillStyle = theme.line;
+      g.globalAlpha = a;
+      g.fillRect(x, y, w, h);
+      g.globalAlpha = 1;
+    };
+
+    if (style === 'parquet' || style === 'herringbone') {
+      for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+          const vertical = (x + y) % 2 === 0;
           for (let k = 0; k < 4; k++) {
-            g.fillStyle = shade(base, (r() - 0.5) * 0.07);
-            g.fillRect(x * S + k * (S / 4), y * S, S / 4 - 2, S);
+            const tone = shade((k + x + y) % 2 ? theme.a : theme.b, (r() - 0.5) * 0.08);
+            g.fillStyle = tone;
+            if (vertical) {
+              g.fillRect(x * S + k * (S / 4), y * S, S / 4, S);
+              grain(x * S + k * (S / 4), y * S, S / 4, S, true, 2);
+              seam(x * S + k * (S / 4), y * S, 1, S, 0.18);
+            } else {
+              g.fillRect(x * S, y * S + k * (S / 4), S, S / 4);
+              grain(x * S, y * S + k * (S / 4), S, S / 4, false, 2);
+              seam(x * S, y * S + k * (S / 4), S, 1, 0.18);
+            }
           }
         }
-        g.strokeStyle = theme.line;
-        g.globalAlpha = 0.45;
-        g.lineWidth = 2;
-        g.strokeRect(x * S + 1, y * S + 1, S - 2, S - 2);
-        g.globalAlpha = 1;
+      }
+    } else if (style === 'tiles' || style === 'tile') {
+      for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+          const base = shade(theme.a, (r() - 0.5) * 0.06 + ((x * 7 + y * 3) % 5 === 0 ? 0.03 : 0));
+          g.fillStyle = base;
+          g.fillRect(x * S, y * S, S, S);
+          // 아주 옅은 베벨 음영 (선이 아니라 면의 밝기 차이)
+          const gr = g.createLinearGradient(x * S, y * S, x * S + S, y * S + S);
+          gr.addColorStop(0, 'rgba(255,255,255,0.045)');
+          gr.addColorStop(1, 'rgba(0,0,0,0.06)');
+          g.fillStyle = gr;
+          g.fillRect(x * S, y * S, S, S);
+          for (let i = 0; i < 10; i++) {
+            g.fillStyle = `rgba(255,255,255,${0.02 + r() * 0.03})`;
+            g.fillRect(x * S + r() * S, y * S + r() * S, 1.5, 1.5);
+          }
+        }
+      }
+    } else if (style === 'deck') {
+      for (let x = 0; x < W * 4; x++) {
+        let y = -Math.floor(r() * 2);
+        while (y < H) {
+          const len = 2 + Math.floor(r() * 2);
+          const tone = shade(x % 2 ? theme.a : theme.b, (r() - 0.5) * 0.1);
+          g.fillStyle = tone;
+          g.fillRect(x * (S / 4), y * S, S / 4, len * S);
+          grain(x * (S / 4), y * S, S / 4, len * S, true, 3);
+          seam(x * (S / 4) + S / 4 - 1.5, y * S, 1.5, len * S, 0.45);
+          seam(x * (S / 4), y * S, S / 4, 1.5, 0.4);
+          y += len;
+        }
+      }
+    } else {
+      // planks: 칸마다 판자 2줄, 판자 길이 2~3칸 — 이음매가 칸 경계에서 엇갈린다
+      for (let row = 0; row < H * 2; row++) {
+        let x = -Math.floor(r() * 3);
+        while (x < W) {
+          const len = 2 + Math.floor(r() * 2);
+          const tone = shade(row % 2 ? theme.a : theme.b, (r() - 0.5) * 0.09);
+          g.fillStyle = tone;
+          g.fillRect(x * S, row * (S / 2), len * S, S / 2);
+          grain(x * S, row * (S / 2), len * S, S / 2, false, 5);
+          seam(x * S, row * (S / 2), len * S, 1.5, 0.4);
+          seam(x * S, row * (S / 2), 1.5, S / 2, 0.45);
+          y0Nail(g, x * S + 5, row * (S / 2) + S / 4, theme.line);
+          x += len;
+        }
       }
     }
+
+    // 빛 웅덩이 — 램프 아래처럼 따뜻한 원 (칸 위치를 읽는 단서)
+    const pools = [
+      [W / 2, H / 2, 3.2],
+      [W * 0.22, H * 0.25, 2.2],
+      [W * 0.78, H * 0.25, 2.2],
+      [W * 0.22, H * 0.75, 2.2],
+      [W * 0.78, H * 0.75, 2.2],
+    ];
+    g.globalCompositeOperation = 'lighter';
+    for (const [px, py, pr] of pools) {
+      const gr = g.createRadialGradient(px * S, py * S, 0, px * S, py * S, pr * S);
+      gr.addColorStop(0, 'rgba(255,190,120,0.1)');
+      gr.addColorStop(1, 'rgba(255,190,120,0)');
+      g.fillStyle = gr;
+      g.fillRect(0, 0, W * S, H * S);
+    }
+    g.globalCompositeOperation = 'source-over';
+    // 가장자리 비네트 (방 구석은 조금 어둡게)
+    const v = g.createRadialGradient((W * S) / 2, (H * S) / 2, Math.min(W, H) * S * 0.3, (W * S) / 2, (H * S) / 2, Math.max(W, H) * S * 0.75);
+    v.addColorStop(0, 'rgba(0,0,0,0)');
+    v.addColorStop(1, 'rgba(0,0,0,0.22)');
+    g.fillStyle = v;
+    g.fillRect(0, 0, W * S, H * S);
     const t = toTexture(c);
     t.magFilter = THREE.LinearFilter;
+    t.anisotropy = 4;
     return t;
   });
 }
 
+function y0Nail(g, x, y, col) {
+  g.fillStyle = col;
+  g.globalAlpha = 0.35;
+  g.beginPath();
+  g.arc(x, y, 1.2, 0, Math.PI * 2);
+  g.fill();
+  g.globalAlpha = 1;
+}
+
 // ── 러그 ─────────────────────────────────────────
-export function rugTexture(color, trim) {
-  return cached(`rug-${color}-${trim}`, () => {
-    const c = canvas(512, 512);
+// 러그 — 칸 수에 맞춘 비율. 칸마다 작은 마름모 문양이 있어 격자선 없이도 칸이 읽힌다
+export function rugTexture(color, trim, cw = 4, ch = 4, kind = 'rug') {
+  return cached(`rug-${color}-${trim}-${cw}-${ch}-${kind}`, () => {
+    const S = 96;
+    const Wp = Math.max(1, cw) * S;
+    const Hp = Math.max(1, ch) * S;
+    const c = canvas(Wp, Hp);
     const g = c.getContext('2d');
     g.fillStyle = color;
-    g.fillRect(0, 0, 512, 512);
+    g.fillRect(0, 0, Wp, Hp);
     g.strokeStyle = trim;
-    g.lineWidth = 14;
-    g.strokeRect(18, 18, 476, 476);
-    g.lineWidth = 4;
-    g.strokeRect(46, 46, 420, 420);
-    g.globalAlpha = 0.35;
-    for (let i = 0; i < 6; i++) {
-      g.beginPath();
-      g.arc(256, 256, 40 + i * 30, 0, Math.PI * 2);
-      g.stroke();
-    }
-    g.globalAlpha = 0.18;
+    g.lineWidth = 10;
+    g.strokeRect(10, 10, Wp - 20, Hp - 20);
+    g.lineWidth = 3;
+    g.strokeRect(26, 26, Wp - 52, Hp - 52);
+    // 칸마다 마름모 문양
+    g.globalAlpha = 0.32;
     g.fillStyle = trim;
-    for (let i = 0; i < 400; i++) g.fillRect(Math.random() * 512, Math.random() * 512, 2, 2);
+    for (let y = 0; y < ch; y++) {
+      for (let x = 0; x < cw; x++) {
+        const cx = x * S + S / 2;
+        const cy = y * S + S / 2;
+        g.beginPath();
+        g.moveTo(cx, cy - 13);
+        g.lineTo(cx + 13, cy);
+        g.lineTo(cx, cy + 13);
+        g.lineTo(cx - 13, cy);
+        g.closePath();
+        g.fill();
+      }
+    }
+    if (kind !== 'runner') {
+      g.globalAlpha = 0.3;
+      g.lineWidth = 4;
+      const R = Math.min(Wp, Hp) / 2 - 40;
+      for (let i = 0; i < 5; i++) {
+        g.beginPath();
+        g.arc(Wp / 2, Hp / 2, R * (0.3 + i * 0.175), 0, Math.PI * 2);
+        g.stroke();
+      }
+    }
+    g.globalAlpha = 0.16;
+    for (let i = 0; i < cw * ch * 40; i++) g.fillRect(Math.random() * Wp, Math.random() * Hp, 2, 2);
     g.globalAlpha = 1;
     return toTexture(c);
   });
@@ -269,6 +386,78 @@ export function noteTexture(color = '#ffb347') {
     g.lineTo(101, 34);
     g.lineTo(60, 42);
     g.fill();
+    return toTexture(c);
+  });
+}
+
+// ── Sound Wave 파형 (바닥에 깔리는 얇은 waveform 라인) ─────────
+export function waveformTexture() {
+  return cached('waveform', () => {
+    const c = canvas(512, 64);
+    const g = c.getContext('2d');
+    g.clearRect(0, 0, 512, 64);
+    const line = (amp, freq, width, alpha, phase) => {
+      g.strokeStyle = `rgba(255,255,255,${alpha})`;
+      g.lineWidth = width;
+      g.beginPath();
+      for (let x = 0; x <= 512; x += 2) {
+        const env = 0.55 + 0.45 * Math.sin((x / 512) * Math.PI * 4);
+        const y = 32 + Math.sin((x / 512) * Math.PI * 2 * freq + phase) * amp * env + Math.sin((x / 512) * Math.PI * 2 * freq * 3.1) * amp * 0.25;
+        if (x === 0) g.moveTo(x, y);
+        else g.lineTo(x, y);
+      }
+      g.stroke();
+    };
+    line(17, 6, 7, 0.22, 0);
+    line(17, 6, 2.6, 1, 0);
+    line(9, 12, 1.4, 0.55, 1.3);
+    // 아주 얇은 EQ 눈금
+    g.fillStyle = 'rgba(255,255,255,0.35)';
+    for (let x = 4; x < 512; x += 16) {
+      const h = 4 + Math.abs(Math.sin(x * 0.13)) * 14;
+      g.fillRect(x, 32 - h / 2, 2, h);
+    }
+    return toTexture(c, { repeat: true });
+  });
+}
+
+// ── 음표 글리프 (♪ ♫ 스프라이트) ───────────────────
+export function glyphTexture(ch = '♫', color = '#ffffff') {
+  return cached(`glyph-${ch}-${color}`, () => {
+    const c = canvas(128, 128);
+    const g = c.getContext('2d');
+    g.font = 'bold 96px "DejaVu Sans", "Segoe UI Symbol", "Apple Symbols", sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.shadowColor = color;
+    g.shadowBlur = 18;
+    g.fillStyle = color;
+    g.fillText(ch, 64, 70);
+    g.shadowBlur = 0;
+    g.fillStyle = '#ffffff';
+    g.fillText(ch, 64, 70);
+    return toTexture(c);
+  });
+}
+
+// ── LP 홈 링 (Wave 바닥 타일: 레코드 홈 동심원) ──────────
+export function grooveRingTexture() {
+  return cached('groove-ring', () => {
+    const c = canvas(256, 256);
+    const g = c.getContext('2d');
+    const grad = g.createRadialGradient(128, 128, 6, 128, 128, 128);
+    grad.addColorStop(0, 'rgba(255,255,255,0.75)');
+    grad.addColorStop(0.55, 'rgba(255,255,255,0.18)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 9; i++) {
+      g.strokeStyle = `rgba(255,255,255,${i % 3 === 0 ? 0.9 : 0.35})`;
+      g.lineWidth = i % 3 === 0 ? 3 : 1.2;
+      g.beginPath();
+      g.arc(128, 128, 22 + i * 11, 0, Math.PI * 2);
+      g.stroke();
+    }
     return toTexture(c);
   });
 }

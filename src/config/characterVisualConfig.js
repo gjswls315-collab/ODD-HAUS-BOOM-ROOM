@@ -11,6 +11,7 @@
 // Gameplay Rule 은 모두 같고, 애니메이션 personality 만 다르다.
 //   placeStyle: Beat Bomb 설치 모션
 //   walk: { bob, freq, lean, sway }
+//   idle: 서 있을 때 자세 (v4: 능력치를 옷으로 표현하지 않고 자세/움직임으로) — lean 앞 기울기, squash 낮은 무게중심, bounce 통통
 //   victory: 승리 포즈
 //
 // GLB 애니메이션 클립 이름 규칙(대소문자 무관, 포함 검색):
@@ -22,6 +23,7 @@ export const CHARACTER_VISUALS = {
     glb: 'assets/characters/vin/chr_vin.glb',
     height: 0.95,
     placeStyle: 'calm', // 차분하게 LP 장치를 내려놓음
+    idle: { lean: 0, bob: 0.012, freq: 2.0, sway: 0.06 }, // 차분하게 서 있음
     walk: { bob: 0.06, freq: 9, lean: 0.12, sway: 0.08 },
     victory: 'spin',
     accent: '#ff5a4f',
@@ -30,6 +32,7 @@ export const CHARACTER_VISUALS = {
     glb: 'assets/characters/picker/chr_picker.glb',
     height: 0.95,
     placeStyle: 'flick', // 빠르게 툭 던지듯
+    idle: { lean: 0.2, bob: 0.015, freq: 3.4, sway: 0.03 }, // 앞으로 기울어 조급함
     walk: { bob: 0.08, freq: 12, lean: 0.2, sway: 0.05 },
     victory: 'jump',
     accent: '#ff3b3b',
@@ -38,6 +41,7 @@ export const CHARACTER_VISUALS = {
     glb: 'assets/characters/aa/chr_aa.glb',
     height: 0.95,
     placeStyle: 'heavy', // 조금 묵직하게
+    idle: { lean: -0.05, bob: 0.01, freq: 1.3, sway: 0.12 }, // 졸린 듯 느긋하게 흔들림
     walk: { bob: 0.05, freq: 8, lean: 0.08, sway: 0.1 },
     victory: 'flex',
     accent: '#ffd23f',
@@ -46,6 +50,7 @@ export const CHARACTER_VISUALS = {
     glb: 'assets/characters/locke/chr_locke.glb',
     height: 0.98,
     placeStyle: 'cautious', // 주변을 확인하며
+    idle: { lean: 0.06, bob: 0.01, freq: 2.0, sway: 0.03, look: true }, // 조심스럽게 주변 확인
     walk: { bob: 0.05, freq: 9, lean: 0.1, sway: 0.06 },
     victory: 'tipHat',
     accent: '#d9a441',
@@ -54,6 +59,7 @@ export const CHARACTER_VISUALS = {
     glb: 'assets/characters/rex/chr_rex.glb',
     height: 1.0,
     placeStyle: 'royal', // 무겁게 내려놓음
+    idle: { lean: 0, bob: 0.005, freq: 1.1, sway: 0.03, squash: 0.93 }, // 낮은 무게중심, 느림
     walk: { bob: 0.04, freq: 7, lean: 0.05, sway: 0.12 },
     victory: 'royal',
     accent: '#c8102e',
@@ -62,6 +68,7 @@ export const CHARACTER_VISUALS = {
     glb: 'assets/characters/buddy/npc_buddy.glb',
     height: 0.8,
     placeStyle: 'paw', // 앞발로 툭 밀어
+    idle: { lean: 0.05, bob: 0.06, freq: 5.2, sway: 0.05, bounce: true }, // 통통 튐
     walk: { bob: 0.07, freq: 13, lean: 0.06, sway: 0.1 },
     victory: 'wag',
     accent: '#e8c48a',
@@ -70,6 +77,7 @@ export const CHARACTER_VISUALS = {
     glb: 'assets/characters/bully/enemy_bully.glb',
     height: 1.0,
     placeStyle: 'kick', // 장난스럽게 차듯
+    idle: { lean: -0.08, bob: 0.02, freq: 3.6, sway: 0.08 }, // 건들건들
     walk: { bob: 0.07, freq: 11, lean: 0.16, sway: 0.07 },
     victory: 'guitar',
     accent: '#3fa34d',
