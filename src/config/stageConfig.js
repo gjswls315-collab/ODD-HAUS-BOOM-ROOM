@@ -211,7 +211,7 @@ export const STAGES = {
     no: '04',
     name: 'DJ BOOTH',
     subtitle: 'DJ 부스 배틀 · 리듬형 / 변형',
-    desc: 'G 는 턴테이블 5대. 그중 중앙 턴테이블만 예고 후 16초마다 둘레 8칸이 한 칸 회전한다 (나머지는 고정 장식).',
+    desc: 'G 는 턴테이블 5대 (시각적으로만 회전, 맵은 고정). 16초마다 BEAT DROP! 경고 후 중앙 턴테이블 둘레 3×3 에 Sound Pulse.',
     eventDesc: 'Speaker Drop 예고 후 짧은 시간 Beat Bomb 카운트가 빨라진다.',
     map: [
       '#################',
@@ -237,7 +237,8 @@ export const STAGES = {
     // 시작 상태 BREAKABLE 보충 (빈 칸 중 density 비율 + 시작 위치 2~4칸 안 최소 nearSpawn 개)
     startFill: { density: 0.36, nearSpawn: 6 },
     gimmicks: [
-      { kind: 'turntables', interval: 16, warnTime: 2.0, decks: [[8, 7]] },
+      // 턴테이블 링 회전(지형 이동)은 사용하지 않는다 → BEAT DROP 으로 대체
+      { kind: 'beatDrop', center: [8, 7], radius: 1, firstAt: 16, interval: 16, warnTime: 2.0 },
       { kind: 'speakerDrop', firstAt: 60, interval: 50, duration: 9, warnTime: 2, fuseMultiplier: 0.6 },
     ],
     houseEvents: null,

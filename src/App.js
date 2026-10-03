@@ -307,6 +307,13 @@ export class App {
           ui.banner(`WIND ${DIR_ARROW[e.dir]}`, { sub: '돌풍이 분다 — 한 칸 밀림', color: '#bfe6ff' });
           au.sfx('warn');
           break;
+        case 'beatDropWarn':
+          ui.banner('BEAT DROP!', { sub: '중앙 턴테이블 주변에 Sound Pulse', color: '#b46bff', ms: 1400 });
+          au.sfx('warn');
+          break;
+        case 'beatDrop':
+          au.sfx('boom');
+          break;
         case 'recOn':
           ui.banner('● REC', { sub: '올라온 장비 라인에 Sound Pulse', color: '#ff3b4f' });
           au.sfx('warn');

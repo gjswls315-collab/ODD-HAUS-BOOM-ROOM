@@ -407,6 +407,15 @@ export class GameRenderer {
           }
           this.shake(0.1);
           break;
+        case 'beatDrop': {
+          const ex = gm.waves.explosions.find((x) => x.id === e.explosionId);
+          if (ex) this.waveViews.push(new WaveView(this.matchRoot, ex, this.toWorld));
+          const w = this.toWorld(e.x, e.y);
+          this.fx.ringPulse({ x: w.x, z: w.z }, '#b46bff', { to: 2.6 });
+          this.fx.sparkle({ x: w.x, y: 0.8, z: w.z }, '#d9b8ff', 26, { spread: 1.2, up: 2.4 });
+          this.shake(0.1);
+          break;
+        }
         case 'ampReact': {
           const w = this.toWorld(e.x, e.y);
           this.fx.ringPulse({ x: w.x, z: w.z }, '#ff3b4f', { to: 1.1 });

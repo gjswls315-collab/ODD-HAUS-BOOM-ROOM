@@ -246,13 +246,13 @@ describe('Mr. ODD House Event (Locked Room only)', () => {
     for (const p of gm.players.list) expect(gm.grid.isWalkable(p.cellX, p.cellY)).toBe(true);
   });
 
-  it('only the allowed gimmicks remain: Studio REC pulse, DJ center turntable + speaker drop, Terrace wind', () => {
+  it('only the allowed gimmicks remain: Studio REC pulse, DJ beat drop + speaker drop, Terrace wind', () => {
     const kinds = (id) => STAGES[id].gimmicks.map((g) => g.kind).sort();
     expect(kinds('lounge')).toEqual([]);
     expect(kinds('lpLibrary')).toEqual([]);
     expect(kinds('studio')).toEqual(['gates', 'recPulse']);
     expect(STAGES.studio.gimmicks.find((g) => g.kind === 'gates').toggle).toBe(false);
-    expect(kinds('djBooth')).toEqual(['speakerDrop', 'turntables']);
+    expect(kinds('djBooth')).toEqual(['beatDrop', 'speakerDrop']);
     expect(kinds('terrace')).toEqual(['wind']);
     expect(kinds('lockedRoom')).toEqual([]);
   });
@@ -266,7 +266,7 @@ describe('Stable arenas (the map does not keep moving)', () => {
       .map((c) => `${c.x},${c.y}`)
       .join(';');
 
-  for (const id of ['lounge', 'lpLibrary', 'studio', 'terrace']) {
+  for (const id of ['lounge', 'lpLibrary', 'studio', 'djBooth', 'terrace']) {
     it(`${id}: furniture / walls never move during a 2-minute CPU match`, () => {
       const gm = new GameManager({ mode: 'battle', stageId: id, players: fourBots, seed: 4, skipCountdown: true, spawn: 'random', startFill: true, timeLimit: 120 });
       const bots = gm.players.list.map((p) => new BotBrain(p.id, { seed: gm.seed }));
@@ -308,24 +308,35 @@ describe('Stable arenas (the map does not keep moving)', () => {
     expect(pulses).toBeGreaterThan(0);
   });
 
-  it('DJ BOOTH: only the center turntable rotates (every 16s, warned); the other 4 decks are fixed', () => {
+  it('DJ BOOTH: no terrain rotation — every 16s BEAT DROP! warning, then a Sound Pulse on the center 3×3', () => {
     const gm = game('djBooth', { houseEvents: false });
-    const tt = gm.stage.get('turntables');
-    expect(tt.decks.length).toBe(1);
-    expect(tt.decks[0]).toMatchObject({ x: 8, y: 7 });
-    expect(tt.cfg.interval).toBeGreaterThanOrEqual(15);
-    const ring = tt.decks[0].ring;
-    const before = ring.map((c) => gm.grid.get(c.x, c.y).type).join();
+    expect(gm.stage.get('turntables')).toBeNull();
+    const bd = gm.stage.get('beatDrop');
+    expect(bd.cfg.interval).toBe(16);
+    const snapshot = () => gm.grid.cells.map((c) => (c.type === CELL.SOLID ? '#' : '.')).join('');
+    const before = snapshot();
+    // 플레이어 하나를 중앙 3×3 안의 빈 칸에 세운다
+    const zone = bd._zone().filter((c) => gm.grid.isWalkable(c.x, c.y));
+    for (const c of bd._zone()) if (gm.grid.get(c.x, c.y).type === CELL.BREAKABLE) gm.grid.destroyBreakable(c.x, c.y);
+    const p = gm.players.get(0);
+    const spot = zone[0] || bd._zone()[0];
+    placeAt(gm, p, spot.x, spot.y);
+    const q = gm.players.get(1);
+    placeAt(gm, q, 1, 1);
     let warned = false;
-    run(gm, tt.cfg.interval + 0.1, (g) => {
-      if (g.events.some((e) => e.type === 'turntableWarn')) warned = true;
+    let dropped = false;
+    run(gm, bd.cfg.firstAt + bd.cfg.warnTime + 0.2, (g) => {
+      if (g.events.some((e) => e.type === 'beatDropWarn')) warned = true;
+      if (g.events.some((e) => e.type === 'beatDrop')) dropped = true;
+      g.events.length = 0;
       return {};
     });
     expect(warned).toBe(true);
-    expect(ring.map((c) => gm.grid.get(c.x, c.y).type).join()).not.toBe(before);
-    // 바깥 턴테이블(4,4) 둘레는 그대로
-    expect(gm.grid.get(5, 5).type).toBe(CELL.SOLID);
-    expect(gm.grid.get(3, 4).type).toBe(CELL.BREAKABLE);
+    expect(dropped).toBe(true);
+    expect(p.isTrapped).toBe(true); // 중앙에 서 있던 플레이어는 맞는다
+    expect(q.isTrapped).toBe(false);
+    expect(p.cellX).toBe(spot.x); // 플레이어도 실려 가지 않는다
+    expect(snapshot()).toBe(before); // 가구(SOLID) 위치 그대로
 
     const sd = gm.stage.get('speakerDrop');
     sd.nextAt = 0;

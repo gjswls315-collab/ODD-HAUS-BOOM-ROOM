@@ -306,15 +306,11 @@ export class StageView {
       }
     }
 
-    // 턴테이블 회전 연출 — 실제로 회전하는 덱만 판이 돈다 (나머지는 고정 장식)
-    if (!this.activeDecks) {
-      const tt = this.gm?.stage?.get?.('turntables');
-      this.activeDecks = new Set((tt?.decks || []).map((d) => `${d.x},${d.y}`));
-    }
+    // 턴테이블은 시각적으로만 천천히 돈다 (논리 맵은 고정)
     for (const d of this.decks) {
       d.angle = damp(d.angle, d.target, 8, dt);
       const platter = d.obj.getObjectByName('platter');
-      if (platter) platter.rotation.y = d.angle + (this.activeDecks.has(`${d.x},${d.y}`) ? this.t * 0.6 : 0);
+      if (platter) platter.rotation.y = d.angle + this.t * 0.5;
     }
     // 스피커 비트 펄스 (불빛만 — 가구 자체는 움직이지 않는다)
     for (const s of this.speakers) {

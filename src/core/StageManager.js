@@ -6,6 +6,7 @@ import { Turntables } from './gimmicks/turntables.js';
 import { SpeakerDrop } from './gimmicks/speakerDrop.js';
 import { Wind } from './gimmicks/wind.js';
 import { Doors } from './gimmicks/doors.js';
+import { BeatDrop } from './gimmicks/beatDrop.js';
 
 // 스테이지 기믹 레지스트리 — 전부 공용 (캐릭터 전용 기믹 없음)
 export const GIMMICK_REGISTRY = {
@@ -17,6 +18,7 @@ export const GIMMICK_REGISTRY = {
   speakerDrop: SpeakerDrop,
   wind: Wind,
   doors: Doors,
+  beatDrop: BeatDrop,
 };
 
 export class StageManager {

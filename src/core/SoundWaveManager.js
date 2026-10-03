@@ -54,6 +54,35 @@ export class SoundWaveManager {
     return result;
   }
 
+  // 지정한 칸들에 한 번에 퍼지는 파동 (DJ BOOTH BEAT DROP). 소유자 없음.
+  emitArea(cells, x0, y0, source = 'area') {
+    const { gm } = this;
+    const { grid } = gm;
+    const hit = [];
+    const toDestroy = [];
+    for (const c of cells) {
+      const inter = grid.waveInteraction(c.x, c.y);
+      if (inter === 'block') continue;
+      hit.push({ x: c.x, y: c.y });
+      if (inter === 'destroy') toDestroy.push(c);
+      const b = gm.bombs.at(c.x, c.y);
+      if (b) gm.bombs.trigger(b, GAME_CONFIG.bomb.chainDelay);
+    }
+    if (W.destroysItems) for (const c of hit) gm.items.destroyAt(c.x, c.y);
+    for (const c of toDestroy) {
+      const before = grid.destroyBreakable(c.x, c.y);
+      if (!before) continue;
+      gm.emit('blockDestroyed', { x: c.x, y: c.y, prop: before.prop, group: before.group });
+      gm.stage.onBreakableDestroyed(c.x, c.y, before);
+      gm.items.rollDrop(c.x, c.y);
+    }
+    const explosion = { id: this.nextId++, x: x0, y: y0, arms: { up: 0, down: 0, left: 0, right: 0 }, ends: {}, ownerId: null, source, time: gm.time, expires: gm.time + W.lingerTime, cells: hit };
+    this.explosions.push(explosion);
+    for (const c of hit) this.cells.set(cellKey(c.x, c.y), { x: c.x, y: c.y, expires: explosion.expires, ownerId: null, explosionId: explosion.id });
+    this.applyHits();
+    return { explosion, cells: hit };
+  }
+
   _propagate(x0, y0, range, dirs, { ownerId, includeCenter, source }) {
     const { gm } = this;
     const { grid } = gm;
