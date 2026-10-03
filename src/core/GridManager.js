@@ -1,7 +1,7 @@
 import { CELL, legendFor } from '../config/stageConfig.js';
 
 // 논리 그리드 — 3D 그래픽과 완전히 분리된다.
-// cell = { x, y, type, prop, group, gimmick, ring, routeCrate, amp, light, movable }
+// cell = { x, y, type, prop, group, gimmick, ring, routeCrate, amp, light, movable, single }
 //   gimmick = { kind, solid, open?, ... } (GIMMICK 셀만)
 // group  = 여러 칸짜리 가구(소파, 선반 등)를 하나의 오브젝트로 묶는 id (렌더 / House Event 이동용)
 
@@ -64,7 +64,8 @@ export class GridManager {
       for (let x = 0; x < W; x++) {
         const cell = grid.get(x, y);
         if (cell.group || !cell.prop || MERGE_EXCLUDE.has(cell.prop)) continue;
-        if (cell.type === CELL.BREAKABLE || cell.type === CELL.GIMMICK) {
+        if (cell.type === CELL.BREAKABLE || cell.type === CELL.GIMMICK || cell.single) {
+          // single: 붙어 있어도 칸마다 따로 (Studio 부스 벽 / DJ 무대 링 — 덩어리로 묶으면 네모 블록이 된다)
           grid._newGroup(cell.prop, [cell], { movable: false });
           continue;
         }
@@ -309,6 +310,7 @@ function makeCell(x, y, def) {
     light: !!def.light,
     movable: !!def.movable,
     turntable: !!def.turntable,
+    single: !!def.single,
     border: false,
     interiorSolid: false,
     gimmick: def.gimmick

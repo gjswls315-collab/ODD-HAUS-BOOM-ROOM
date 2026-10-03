@@ -4,7 +4,7 @@ import { getStage } from '../config/stageConfig.js';
 import { MATCH_PHASE } from './constants.js';
 import { Rng } from './rng.js';
 import { GridManager } from './GridManager.js';
-import { pickRandomSpawns, fillBreakables } from './spawns.js';
+import { pickRandomSpawns, fillBreakables, fillZoneOf, FILL_ZONE } from './spawns.js';
 import { PlayerManager } from './PlayerManager.js';
 import { BeatBombManager } from './BeatBombManager.js';
 import { SoundWaveManager } from './SoundWaveManager.js';
@@ -44,7 +44,9 @@ export class GameManager {
     this.stageDef = setup.stageDef || getStage(setup.stageId || 'lounge');
     this.grid = GridManager.fromStage(this.stageDef, this.rng);
     if (setup.spawn === 'random') {
-      const spawns = pickRandomSpawns(this.grid, this.rng, Math.max(4, setup.players.length));
+      const zones = this.stageDef.startFill?.zones;
+      const avoid = zones ? (x, y) => fillZoneOf(this.grid, x, y, zones) === FILL_ZONE.CENTER : null;
+      const spawns = pickRandomSpawns(this.grid, this.rng, Math.max(4, setup.players.length), { avoid });
       if (spawns) this.grid.spawns = spawns;
       this.grid.version = 0;
     }

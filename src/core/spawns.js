@@ -8,6 +8,7 @@ import { CELL } from '../config/stageConfig.js';
 //   - 시작 칸에서 수직인 두 방향으로 2칸씩(L자) 벽이 없어야 한다 → 그 칸의 상자는 치운다
 //     (시작하자마자 자기 폭탄에 갇히지 않도록 — 고정 맵의 모서리 시작과 같은 여유)
 //   - 플레이어끼리는 가능한 한 멀리 (맵 크기에 비례한 최소 거리, 안 되면 가장 먼 곳)
+//   - avoid(x, y) 가 true 인 칸(중앙 전투 구역)은 시작 위치로 쓰지 않는다
 // ─────────────────────────────────────────────────────────────
 
 const DIRS = [
@@ -17,7 +18,7 @@ const DIRS = [
   [0, -1],
 ];
 
-export function pickRandomSpawns(grid, rng, count, { minDist } = {}) {
+export function pickRandomSpawns(grid, rng, count, { minDist, avoid } = {}) {
   const W = grid.width;
   const H = grid.height;
   const key = (x, y) => y * W + x;
@@ -52,6 +53,7 @@ export function pickRandomSpawns(grid, rng, count, { minDist } = {}) {
   const candidates = [];
   for (const c of grid.cells) {
     if (c.type !== CELL.EMPTY || !region.has(key(c.x, c.y)) || !open(c.x, c.y)) continue;
+    if (avoid && avoid(c.x, c.y)) continue; // 중앙 전투 구역에서는 시작하지 않는다
     const ls = [];
     for (const [ax, ay] of DIRS) {
       for (const [bx, by] of DIRS) {
@@ -98,14 +100,40 @@ export function pickRandomSpawns(grid, rng, count, { minDist } = {}) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// 시작 상태 BREAKABLE 보충 — 초반 "박스 부수기 → 아이템 → 성장" 루프 강화
-//   빈 칸 중 density 비율을 스테이지 소품(BREAKABLE)으로 채운다 (시작 칸 + L자 여유 칸 제외)
-//   각 시작 위치에서 2~4칸 거리에는 최소 nearSpawn 개의 상자가 있도록 보장
+// 시작 상태 BREAKABLE 보충 — 구역별 배치 (총 수량은 유지, 위치만 나눈다)
+//
+//   SPAWN FARM ZONE      : 각 시작 위치에서 2~3칸 거리 → 상자 farm[0]~farm[1] 개 (기본 5~7)
+//                          시작하자마자 부술 상자가 있고, 너무 많아 갇히지도 않는다
+//   SIDE LOOT ZONE       : 맵 가장자리 띠(zones.side 칸) → 촘촘 (아이템 파밍 구역)
+//   CENTRAL COMBAT ZONE  : 맵 중앙 (zones.center = [가로 반경, 세로 반경]) → 드문드문 (전투 공간)
+//   그 외 (MID)          : 보통
+//
+//   startFill = { zones: { center: [rx, ry], side: n }, density: { center, side, mid }, farm: [min, max] }
+//   (예전 형식 { density: 0.35, nearSpawn: 6 } 도 그대로 동작 — 구역 없이 균일)
 //   판정은 모두 공통 BREAKABLE, 비주얼만 stage.breakables 에서 고른다
 // ─────────────────────────────────────────────────────────────
-export function fillBreakables(grid, rng, spawns, { density = 0.35, nearSpawn = 6 } = {}, props = ['box']) {
+export const FILL_ZONE = { CENTER: 'center', SIDE: 'side', MID: 'mid' };
+
+export function fillZoneOf(grid, x, y, zones) {
+  if (!zones) return FILL_ZONE.MID;
+  const cx = (grid.width - 1) / 2;
+  const cy = (grid.height - 1) / 2;
+  const [rx, ry] = zones.center || [0, 0];
+  if (Math.abs(x - cx) <= rx && Math.abs(y - cy) <= ry) return FILL_ZONE.CENTER;
+  const band = zones.side ?? 0;
+  const edge = Math.min(x, y, grid.width - 1 - x, grid.height - 1 - y); // 테두리 = 0
+  if (edge <= band) return FILL_ZONE.SIDE;
+  return FILL_ZONE.MID;
+}
+
+export function fillBreakables(grid, rng, spawns, cfg = {}, props = ['box']) {
   const W = grid.width;
   const key = (x, y) => y * W + x;
+  const zones = cfg.zones || null;
+  const dens = typeof cfg.density === 'object' ? cfg.density : { center: cfg.density ?? 0.35, side: cfg.density ?? 0.35, mid: cfg.density ?? 0.35 };
+  const [farmMin, farmMax] = cfg.farm || [cfg.nearSpawn ?? 6, Infinity];
+  const farmBand = cfg.farm ? [2, 3] : [2, 4];
+
   const keep = new Set();
   for (const s of spawns) {
     keep.add(key(s.x, s.y));
@@ -115,22 +143,37 @@ export function fillBreakables(grid, rng, spawns, { density = 0.35, nearSpawn = 
   const put = (c) => grid.setBreakable(c.x, c.y, props[Math.floor(rng.next() * props.length)], true);
   let added = 0;
   for (const c of grid.cells) {
-    if (fillable(c) && rng.next() < density) {
+    if (fillable(c) && rng.next() < dens[fillZoneOf(grid, c.x, c.y, zones)]) {
       put(c);
       added++;
     }
   }
+
+  // SPAWN FARM ZONE — 시작 위치마다 farmMin~farmMax 개
   for (const s of spawns) {
-    const band = grid.cells.filter((c) => {
-      const d = Math.abs(c.x - s.x) + Math.abs(c.y - s.y);
-      return d >= 2 && d <= 4;
-    });
-    let have = band.filter((c) => c.type === CELL.BREAKABLE).length;
-    const free = rng.shuffle(band.filter(fillable));
-    while (have < nearSpawn && free.length) {
-      put(free.pop());
-      have++;
-      added++;
+    const dist = (c) => Math.abs(c.x - s.x) + Math.abs(c.y - s.y);
+    const band = grid.cells.filter((c) => dist(c) >= farmBand[0] && dist(c) <= farmBand[1]);
+    const boxes = band.filter((c) => c.type === CELL.BREAKABLE);
+    let have = boxes.length;
+    const want = farmMin + Math.floor(rng.next() * (Math.min(farmMax, farmMin + 2) - farmMin + 1));
+    if (have < farmMin) {
+      // 2~3칸 안이 가구로 막혀 자리가 없으면 4칸 거리까지 넓혀 채운다
+      const outer = grid.cells.filter((c) => dist(c) === farmBand[1] + 1 && fillable(c));
+      const free = [...rng.shuffle(outer), ...rng.shuffle(band.filter(fillable))];
+      while (have < want && free.length) {
+        put(free.pop());
+        have++;
+        added++;
+      }
+    } else if (have > farmMax) {
+      // 너무 빽빽하면 가까운 칸(2칸 거리)부터 덜어낸다 — 시작 직후 움직일 공간 (맵에 그려 둔 B 는 유지)
+      const extra = rng.shuffle(boxes.filter((c) => c.char !== 'B')).sort((a, b) => dist(a) - dist(b));
+      while (have > farmMax && extra.length) {
+        const c = extra.shift();
+        grid.destroyBreakable(c.x, c.y);
+        have--;
+        added--;
+      }
     }
   }
   grid.version = 0;

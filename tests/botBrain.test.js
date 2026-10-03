@@ -110,7 +110,7 @@ describe('CPU (v4): state machine, needs-based items, safe bombs, stuck recovery
 
   it('CPU is never idle: 4 bots on a v4 arena keep moving (no cell held > 6s while free)', () => {
     const players = ['vin', 'picker', 'rex', 'buddy'].map((c, i) => ({ slot: i, characterId: c, bot: true }));
-    const gm = new GameManager({ mode: 'battle', stageId: 'lounge', players, seed: 21, skipCountdown: true, timeLimit: 120 });
+    const gm = new GameManager({ mode: 'battle', stageId: 'lounge', players, seed: 21, skipCountdown: true, timeLimit: 120, spawn: 'random', startFill: true });
     const bots = gm.players.list.map((p) => new BotBrain(p.id, { seed: gm.seed }));
     const still = new Map();
     let worst = 0;

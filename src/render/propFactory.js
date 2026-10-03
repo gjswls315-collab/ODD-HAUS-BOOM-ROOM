@@ -251,6 +251,23 @@ const BUILDERS = {
     return g;
   },
 
+  // STUDIO 녹음 부스 벽 — 칸마다 따로 (흡음 패널 + 위쪽 유리창)
+  boothWall({ face, seed }) {
+    const g = group();
+    g.add(mesh(rbox(0.94, 0.62, 0.94, 0.04), mat('#2a2633', { rough: 0.85 }), { p: [0, 0.31, 0] }));
+    // 흡음 폼 (작은 피라미드 격자)
+    const foam = mat(seed % 2 ? '#3b2350' : '#2c3550', { rough: 1 });
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) g.add(mesh(cone(0.12, 0.1, 4), foam, { p: [-0.3 + i * 0.3, 0.67, -0.3 + j * 0.3], r: [0, Math.PI / 4, 0], cast: false }));
+    // 유리 패널 (프레임 + 푸른 유리)
+    const frame = mat('#1a1a20', { metal: 0.5, rough: 0.35 });
+    g.add(mesh(box(0.94, 0.05, 0.94), frame, { p: [0, 0.64, 0] }));
+    const glass = mat('#6fa8d8', { rough: 0.08, metal: 0.4, emissive: '#1d3a5c', ei: 0.5 });
+    const across = Math.abs(face.x) > 0 ? 'x' : 'z';
+    g.add(mesh(box(across === 'x' ? 0.06 : 0.88, 0.5, across === 'x' ? 0.88 : 0.06), glass, { p: [0, 0.92, 0], cast: false }));
+    g.add(mesh(box(across === 'x' ? 0.08 : 0.94, 0.04, across === 'x' ? 0.94 : 0.08), frame, { p: [0, 1.18, 0] }));
+    return g;
+  },
+
   // ── DJ BOOTH ───────────────────────────────────
   turntable({ seed = 0 }) {
     const g = group();
@@ -284,6 +301,40 @@ const BUILDERS = {
     g.add(mesh(rbox(0.72, 0.44, 0.62, 0.03), mat('#3a2e5a', { rough: 0.7 }), { p: [0, 0.22, 0] }));
     const cols = ['#1c1c22', '#b46bff', '#4fb8ff', '#ff5a8a'];
     for (let i = 0; i < 6; i++) g.add(mesh(box(0.02, 0.5, 0.5), mat(cols[(seed + i) % 4]), { p: [-0.25 + i * 0.1, 0.4, 0], r: [0, 0, 0.15 * Math.sin(seed + i * 1.7)] }));
+    return g;
+  },
+
+  // DJ BOOTH 무대 링 — 중앙 턴테이블을 둘러싼 낮은 LED 단 (칸마다 따로, 정면 = 중앙 쪽)
+  stageRing({ face }) {
+    const g = group();
+    g.add(mesh(rbox(0.96, 0.4, 0.96, 0.05), mat('#3a2c62', { rough: 0.45, metal: 0.25 }), { p: [0, 0.2, 0] }));
+    g.add(mesh(rbox(0.9, 0.06, 0.9, 0.02), mat('#4a3a7a', { rough: 0.3, metal: 0.4 }), { p: [0, 0.43, 0] }));
+    // 윗면 네온 테두리 — 위에서 보면 무대 링이 빛나는 원으로 읽힌다
+    const neon = basic('#c18cff', { toneMapped: false });
+    for (const sx of [-1, 1]) g.add(mesh(box(0.05, 0.03, 0.92), neon, { p: [sx * 0.45, 0.47, 0], cast: false }));
+    for (const sz of [-1, 1]) g.add(mesh(box(0.92, 0.03, 0.05), neon, { p: [0, 0.47, sz * 0.45], cast: false }));
+    const inner = group();
+    inner.add(mesh(box(0.92, 0.06, 0.03), basic('#e0b8ff', { toneMapped: false }), { p: [0, 0.34, 0.49], cast: false }));
+    inner.add(mesh(box(0.92, 0.04, 0.03), basic('#4fb8ff', { toneMapped: false }), { p: [0, 0.12, 0.49], cast: false }));
+    inner.add(mesh(cyl(0.11, 0.13, 0.04, 16), mat('#2a2a33', { metal: 0.4 }), { p: [0, 0.24, 0.48], r: [Math.PI / 2, 0, 0] }));
+    inner.rotation.y = rotY(face);
+    g.add(inner);
+    return g;
+  },
+
+  // DJ BOOTH 양옆 보조 덱 (CDJ) — 한 칸, 작은 플래터만 돈다
+  djDeck({ face }) {
+    const g = group();
+    g.add(mesh(rbox(0.9, 0.62, 0.8, 0.05), mat('#1d1b26', { rough: 0.55 }), { p: [0, 0.31, 0] }));
+    const top = group([], { p: [0, 0.64, 0] });
+    top.add(mesh(rbox(0.84, 0.05, 0.74, 0.02), mat('#2c2a36', { metal: 0.4, rough: 0.35 }), {}));
+    const platter = group([], { name: 'platter', p: [0, 0.04, 0.02] });
+    platter.add(mesh(cyl(0.28, 0.28, 0.03, 40), [mat('#8a8a96', { metal: 0.8, rough: 0.25 }), mat('#fff', { map: grooveTexture('#4fb8ff', 256), rough: 0.25, emissive: '#10243a', ei: 0.6 }), mat('#111')], {}));
+    platter.add(mesh(box(0.04, 0.012, 0.16), basic('#ffffff', { toneMapped: false }), { p: [0, 0.02, 0.12] }));
+    top.add(platter);
+    for (let i = 0; i < 4; i++) top.add(mesh(box(0.1, 0.02, 0.06), basic(i % 2 ? '#b46bff' : '#4fb8ff', { toneMapped: false }), { p: [-0.3 + i * 0.2, 0.035, -0.3], cast: false }));
+    top.rotation.y = rotY(face);
+    g.add(top);
     return g;
   },
 

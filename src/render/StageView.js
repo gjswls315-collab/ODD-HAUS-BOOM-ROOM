@@ -197,7 +197,7 @@ export class StageView {
     if (!initial) obj.scale.setScalar(0.01);
     if (cell && cell.light) this._addLamp(obj, info.wc);
     if (g.prop === 'speaker') this.speakers.push(obj);
-    if (g.prop === 'turntable') this.decks.push({ obj, x: g.cells[0].x, y: g.cells[0].y, angle: 0, target: 0 });
+    if (g.prop === 'turntable' || g.prop === 'djDeck') this.decks.push({ obj, x: g.cells[0].x, y: g.cells[0].y, angle: 0, target: 0 });
     this.groupMeshes.set(g.id, entry);
     return entry;
   }

@@ -4,6 +4,7 @@ import { GridManager } from '../src/core/GridManager.js';
 import { Rng } from '../src/core/rng.js';
 import { run, placeAt, press, DT } from './helpers.js';
 import { GameManager } from '../src/core/GameManager.js';
+import { fillZoneOf } from '../src/core/spawns.js';
 import { BotBrain } from '../src/core/ai/BotBrain.js';
 import { GAME_CONFIG } from '../src/config/gameConfig.js';
 
@@ -17,18 +18,17 @@ const V4_SIZES = {
   lockedRoom: [19, 17],
 };
 
-// 테두리 제외 안쪽 칸 비율 (G 는 고정 장치로 SOLID 쪽에 센다)
-function ratios(map) {
+// 테두리 제외 안쪽 칸 비율 (G·가구 문자 모두 고정 장치로 SOLID 쪽에 센다 — 셀 type 기준)
+function ratios(stage) {
+  const grid = GridManager.fromStage(stage, new Rng(7));
   let solid = 0;
   let brk = 0;
   let open = 0;
-  for (let y = 1; y < map.length - 1; y++) {
-    for (let x = 1; x < map[0].length - 1; x++) {
-      const ch = map[y][x];
-      if (ch === '#' || ch === 'G') solid++;
-      else if (ch === 'B') brk++;
-      else open++;
-    }
+  for (const c of grid.cells) {
+    if (c.border) continue;
+    if (c.type === CELL.SOLID || c.type === CELL.GIMMICK) solid++;
+    else if (c.type === CELL.BREAKABLE) brk++;
+    else open++;
   }
   const n = solid + brk + open;
   return { solid: solid / n, breakable: brk / n, open: open / n, breakables: brk };
@@ -72,23 +72,19 @@ describe('Stages (6 arenas, BOOM ROOM v4 big grids)', () => {
   });
 
   for (const id of Object.keys(STAGES)) {
-    it(`${id}: v4 size, SOLID/BREAKABLE/open ratios, 4 corner spawns with 2-cell clearance, connected`, () => {
+    it(`${id}: v4 size, furniture ratio, 4 corner spawns with 2-cell clearance, connected`, () => {
       const [W, H] = V4_SIZES[id];
       const map = STAGES[id].map;
       expect(map.length).toBe(H);
       expect(map.every((r) => r.length === W)).toBe(true);
-      // 좌우·상하 대칭 (공정한 4인 시작)
-      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) expect(map[y][x], `${id} ${x},${y}`).toBe(map[H - 1 - y][W - 1 - x]);
+      // 맵 전체가 대칭일 필요는 없다 (맵마다 다른 실루엣) — 공정성은 시작 위치 주변 여유로 맞춘다
 
-      const r = ratios(map);
-      expect(r.solid).toBeGreaterThanOrEqual(0.2);
-      expect(r.solid).toBeLessThanOrEqual(0.255);
-      expect(r.breakable).toBeGreaterThanOrEqual(0.25);
-      expect(r.breakable).toBeLessThanOrEqual(0.305);
-      expect(r.open).toBeGreaterThanOrEqual(0.45);
-      expect(r.open).toBeLessThanOrEqual(0.505);
-      expect(r.breakables).toBeGreaterThanOrEqual(50);
-      expect(r.breakables).toBeLessThanOrEqual(70);
+      // 고정 가구 17~28% · 맵에 그려 둔 상자는 소수 (나머지 상자는 시작 시 구역별로 채운다)
+      const r = ratios(STAGES[id]);
+      expect(r.solid).toBeGreaterThanOrEqual(0.17);
+      expect(r.solid).toBeLessThanOrEqual(0.28);
+      expect(r.breakable).toBeLessThanOrEqual(0.1);
+      expect(r.open).toBeGreaterThanOrEqual(0.62);
 
       const grid = GridManager.fromStage(STAGES[id], new Rng(7));
       expect(grid.width).toBe(W);
@@ -120,7 +116,7 @@ describe('Stages (6 arenas, BOOM ROOM v4 big grids)', () => {
         [...row].forEach((ch, x) => {
           if (overrides.has(`${x},${y}`)) return;
           const c = grid.get(x, y);
-          if (ch === '#') expect(c.type, `${id} ${x},${y}`).toBe(CELL.SOLID);
+          if (ch === '#' || (STAGES[id].legend[ch] && STAGES[id].legend[ch].solid)) expect(c.type, `${id} ${x},${y}`).toBe(CELL.SOLID);
           if (ch === 'B') expect(c.type, `${id} ${x},${y}`).toBe(CELL.BREAKABLE);
           if (ch === '.' || ch === 'S') expect(c.type, `${id} ${x},${y}`).toBe(CELL.EMPTY);
         }),
@@ -137,28 +133,40 @@ describe('Stages (6 arenas, BOOM ROOM v4 big grids)', () => {
     });
   }
 
-  it('start state: extra stage boxes (about 40% of cells), boxes 2~4 cells from every spawn, ~40 items per match', () => {
+  it('start state: zone-based boxes — SPAWN FARM 5~7 · dense SIDE LOOT · sparse CENTRAL COMBAT · ~40 items per match', () => {
     const fourBots = ['vin', 'picker', 'rex', 'buddy'].map((c, i) => ({ slot: i, characterId: c, bot: true }));
     for (const id of Object.keys(STAGES)) {
-      const base = ratios(STAGES[id].map).breakables;
+      const zones = STAGES[id].startFill.zones;
+      expect(zones, id).toBeTruthy();
       for (const seed of [1, 2, 3]) {
         const gm = new GameManager({ mode: 'battle', stageId: id, players: fourBots, seed, skipCountdown: true, spawn: 'random', startFill: true });
         const g = gm.grid;
         const inner = (g.width - 2) * (g.height - 2);
         const boxes = g.cells.filter((c) => c.type === CELL.BREAKABLE);
-        expect(boxes.length, id).toBeGreaterThan(base + 15);
-        expect(boxes.length / inner, id).toBeGreaterThanOrEqual(0.35);
+        expect(boxes.length / inner, id).toBeGreaterThanOrEqual(0.3);
         // 판정은 공통 BREAKABLE, 비주얼은 스테이지 소품
         for (const c of boxes) expect(STAGES[id].breakables, `${id} ${c.prop}`).toContain(c.prop);
         const expected = boxes.length * gm.items.dropTable.dropChance;
-        expect(expected, id).toBeGreaterThanOrEqual(36);
-        expect(expected, id).toBeLessThanOrEqual(48);
+        expect(expected, id).toBeGreaterThanOrEqual(34);
+        expect(expected, id).toBeLessThanOrEqual(50);
+        // 구역별 밀도: 중앙은 드문드문, 가장자리는 촘촘
+        const dens = (zone) => {
+          const cells = g.cells.filter((c) => !c.border && c.type !== CELL.SOLID && c.type !== CELL.GIMMICK && fillZoneOf(g, c.x, c.y, zones) === zone);
+          return cells.filter((c) => c.type === CELL.BREAKABLE).length / cells.length;
+        };
+        expect(dens('center'), `${id} center`).toBeLessThanOrEqual(0.2);
+        expect(dens('side'), `${id} side`).toBeGreaterThanOrEqual(0.5);
+        expect(dens('side'), id).toBeGreaterThan(dens('mid'));
+        expect(dens('mid'), id).toBeGreaterThan(dens('center'));
         for (const sp of g.spawns) {
-          const near = g.cells.filter((c) => {
-            const d = Math.abs(c.x - sp.x) + Math.abs(c.y - sp.y);
-            return d >= 2 && d <= 4 && c.type === CELL.BREAKABLE;
-          }).length;
-          expect(near, `${id} seed ${seed} boxes near ${sp.x},${sp.y}`).toBeGreaterThanOrEqual(5);
+          const ring = (a, b) =>
+            g.cells.filter((c) => {
+              const d = Math.abs(c.x - sp.x) + Math.abs(c.y - sp.y);
+              return d >= a && d <= b && c.type === CELL.BREAKABLE;
+            }).length;
+          expect(ring(2, 4), `${id} seed ${seed} farm boxes near ${sp.x},${sp.y}`).toBeGreaterThanOrEqual(5);
+          expect(ring(2, 3), `${id} seed ${seed} farm cap near ${sp.x},${sp.y}`).toBeLessThanOrEqual(7);
+          expect(fillZoneOf(g, sp.x, sp.y, zones), `${id} spawn not in the central combat zone`).not.toBe('center');
           expect(g.isWalkable(sp.x, sp.y)).toBe(true);
           for (const c of sp.clear) expect(g.isWalkable(c.x, c.y), `${id} escape room ${c.x},${c.y}`).toBe(true);
         }
@@ -175,16 +183,54 @@ describe('Stages (6 arenas, BOOM ROOM v4 big grids)', () => {
     expect(a.cells.map((x) => x.prop).join()).toBe(b.cells.map((x) => x.prop).join());
   });
 
-  it('Lounge: 6 sofas (### runs) surround the center floor lamp and are movable', () => {
+  it('Lounge identity: 4 sofa islands (sofa + coffee table) around the center floor lamp', () => {
     const grid = GridManager.fromStage(STAGES.lounge, new Rng(1));
     const sofas = [...grid.groups.values()].filter((g) => g.prop === 'sofa');
-    expect(sofas.length).toBe(6);
+    expect(sofas.length).toBe(4);
     expect(sofas.every((g) => g.movable && g.cells.length === 3)).toBe(true);
+    const tables = [...grid.groups.values()].filter((g) => g.prop === 'coffeeTable');
+    expect(tables.length).toBe(4);
+    // 섬마다 소파 바로 앞에 커피테이블
+    for (const t of tables) {
+      const c = t.cells[0];
+      expect(sofas.some((s) => s.cells.some((sc) => sc.x === c.x && Math.abs(sc.y - c.y) === 1))).toBe(true);
+    }
     expect(grid.get(8, 7).prop).toBe('lamp');
     expect(grid.get(8, 7).type).toBe(CELL.SOLID);
-    // 대칭 위치에는 같은 가구
+    expect([...grid.groups.values()].filter((g) => g.prop === 'sideTable').length).toBe(4);
     expect(grid.get(2, 2).prop).toBe(grid.get(14, 12).prop);
-    expect(grid.get(4, 6).prop).toBe(grid.get(12, 8).prop);
+  });
+
+  it('LP Library identity: long horizontal shelf rows make aisles', () => {
+    const grid = GridManager.fromStage(STAGES.lpLibrary, new Rng(1));
+    const longShelves = [...grid.groups.values()].filter((g) => g.prop === 'shelf' && g.cells.length >= 3);
+    expect(longShelves.length).toBeGreaterThanOrEqual(8);
+    expect(longShelves.every((g) => new Set(g.cells.map((c) => c.y)).size === 1)).toBe(true);
+    // 선반 줄 사이 가로 통로는 끝까지 열려 있다
+    for (const y of [1, 4, 7, 10, 13]) expect(STAGES.lpLibrary.map[y].slice(1, -1).replace('G', '')).not.toContain('#');
+  });
+
+  it('Studio identity: glass booth (single wall panels) + 5×2 mixer desk + 3 amps', () => {
+    const grid = GridManager.fromStage(STAGES.studio, new Rng(1));
+    const walls = [...grid.groups.values()].filter((g) => g.prop === 'boothWall');
+    expect(walls.length).toBeGreaterThanOrEqual(12);
+    expect(walls.every((g) => g.cells.length === 1)).toBe(true);
+    const desk = [...grid.groups.values()].find((g) => g.prop === 'mixer');
+    expect(desk.cells.length).toBe(10);
+    const amps = grid.cells.filter((c) => c.gimmick?.kind === 'gate');
+    expect(amps.map((c) => [c.x, c.y])).toEqual([[8, 2], [13, 6], [8, 12]]);
+    expect(amps.every((c) => c.gimmick.solid)).toBe(true);
+  });
+
+  it('DJ Booth identity: center turntable inside an LED stage ring open N/S/E/W', () => {
+    const grid = GridManager.fromStage(STAGES.djBooth, new Rng(1));
+    expect(grid.get(8, 7).prop).toBe('turntable');
+    const ring = grid.cells.filter((c) => c.prop === 'stageRing');
+    expect(ring.length).toBeGreaterThanOrEqual(16);
+    expect(ring.every((c) => grid.groups.get(c.group).cells.length === 1)).toBe(true);
+    for (const [x, y] of [[8, 3], [8, 11], [4, 7], [12, 7]]) expect(grid.isWalkable(x, y), `ring gap ${x},${y}`).toBe(true);
+    // BEAT DROP 3×3 은 모두 바닥 (무대 링 안쪽)
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) if (dx || dy) expect(grid.isWalkable(8 + dx, 7 + dy)).toBe(true);
   });
 
   it('Locked Room: GGG is one Old Audio Machine, wall-attached pieces are not movable', () => {
@@ -194,18 +240,24 @@ describe('Stages (6 arenas, BOOM ROOM v4 big grids)', () => {
     expect(audio[0].cells.length).toBe(3);
     const movable = [...grid.groups.values()].filter((g) => g.movable);
     expect(movable.length).toBeGreaterThanOrEqual(8);
-    expect(grid.get(5, 1).movable).toBe(false);
-    expect(grid.get(5, 1).prop).toBe('wardrobe');
+    expect(grid.get(7, 1).movable).toBe(false);
+    expect(grid.get(7, 1).prop).toBe('wardrobe');
+    // 조금 비대칭인 미로 — 하지만 네 모서리 시작 칸 주변 여유는 같다
+    const map = STAGES.lockedRoom.map;
+    const W = map[0].length;
+    const H = map.length;
+    let diff = 0;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (map[y][x] !== map[H - 1 - y][W - 1 - x]) diff++;
+    expect(diff).toBeGreaterThan(10);
   });
 
-  it('Terrace: planters / patio sets are 2×2 blocks so long lanes stay open', () => {
+  it('Terrace identity: outer 2×2 planters / patio sets, open central plaza', () => {
     const grid = GridManager.fromStage(STAGES.terrace, new Rng(1));
-    const blocks = [...grid.groups.values()].filter((g) => g.prop === 'planterBed' || g.prop === 'patioSet');
-    expect(blocks.length).toBe(12);
-    expect(blocks.every((g) => g.cells.length === 4)).toBe(true);
-    for (const y of [1, 4, 7, 10, 13]) {
-      expect(STAGES.terrace.map[y].slice(1, -1)).not.toContain('#');
-    }
+    const blocks = [...grid.groups.values()].filter((g) => (g.prop === 'planterBed' || g.prop === 'patioSet') && g.cells.length === 4);
+    expect(blocks.length).toBe(8);
+    for (const y of [1, 4, 10, 13]) expect(STAGES.terrace.map[y].slice(1, -1)).not.toContain('#');
+    // 중앙 광장: 바람 장치 말고는 가구가 없다
+    for (let y = 5; y <= 9; y++) for (let x = 6; x <= 12; x++) if (!(x === 9 && y === 7)) expect(grid.isWalkable(x, y), `plaza ${x},${y}`).toBe(true);
   });
 });
 
@@ -285,17 +337,16 @@ describe('Stable arenas (the map does not keep moving)', () => {
 
   it('STUDIO: a Sound Wave on an amp only lights it up — no wall ↔ path switch; REC still pulses', () => {
     const gm = game('studio', { a: 'vin' });
-    expect(gm.grid.isSolid(8, 1)).toBe(true);
-    expect(gm.grid.isSolid(4, 7)).toBe(false);
+    const amps = [[8, 2], [13, 6], [8, 12]];
+    for (const [x, y] of amps) expect(gm.grid.isSolid(x, y)).toBe(true);
     const p = gm.players.get(0);
-    placeAt(gm, p, 7, 1);
+    placeAt(gm, p, 7, 2);
     press(gm, 0, 'bomb');
-    placeAt(gm, p, 1, 3);
+    placeAt(gm, p, 1, 4);
     run(gm, 3, {});
     expect(gm.events.some((e) => e.type === 'ampReact')).toBe(true);
     expect(gm.events.some((e) => e.type === 'gatesToggled')).toBe(false);
-    expect(gm.grid.isSolid(8, 1)).toBe(true);
-    expect(gm.grid.isSolid(4, 7)).toBe(false);
+    for (const [x, y] of amps) expect(gm.grid.isSolid(x, y)).toBe(true);
 
     const rec = gm.stage.get('recPulse');
     rec.nextAt = 0;
