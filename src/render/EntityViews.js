@@ -211,7 +211,9 @@ export class PlayerView {
     this.visualHolder.position.y = 0;
     this.visualHolder.scale.setScalar(this.visualScale);
 
-    this.visual.update(dt, state, p.stateTime, { speed: p.moveSpeed, moving: p.moving });
+    // 대기 포즈: CPU 는 BotBrain 힌트, 사람은 오래(1.6초+) 서 있으면 두리번
+    const pose = p.pose || (state === 'IDLE' && p.stateTime > 1.6 ? 'lookAround' : null);
+    this.visual.update(dt, state, p.stateTime, { speed: p.moveSpeed, moving: p.moving, pose });
 
     const trapped = state === 'TRAPPED';
     this.capsule.visible = trapped;

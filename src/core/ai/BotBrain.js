@@ -10,6 +10,7 @@ import { Rng } from '../rng.js';
 // 캐릭터별 AI 분기 없음 — 캐릭터 차이는 Stats(SPEED/BOMB/WAVE) 뿐.
 //
 //   SCAN ─▶ ITEM_SEEK ─▶ ATTACK ─▶ ESCAPE ─▶ POSITIONING ─▶ SCAN
+//   (갈 곳이 정말 없을 때만 WAIT — 0.25초마다 다시 길을 찾고, 대기 포즈를 보여 준다)
 //
 // 우선순위 (높은 순)
 //   1 위험 지역 탈출          5 상대 동선 차단
@@ -17,7 +18,9 @@ import { Rng } from '../rng.js';
 //   3 필요한 성장 아이템       7 특수 아이템
 //   4 부술 상자 접근           8 상대 추적
 //
-// STUCK CHECK: 같은 칸에 1.2초 이상 머물면 경로 폐기 → 새 도달 가능 칸 → 없으면 주변 안전 칸.
+// STUCK CHECK: 같은 칸에 1초 이상 머물면 경로 폐기 → 새 도달 가능 칸 → 없으면 주변 안전 칸.
+// 멈춰 보이지 않기: 목표가 없으면 열린 칸 → 옆 안전 칸(왔다 갔다) → 늦게 터지는 칸을 지나 밖으로
+//   → 가장 열린 칸 → 그래도 없으면 WAIT (Look Around / Ready / Danger Wait 포즈)
 // 폭탄은 "터지기 전에 도달 가능한 안전 칸"이 있을 때만 놓는다.
 // ─────────────────────────────────────────────────────────────
 
@@ -29,12 +32,19 @@ export const BOT_STATE = Object.freeze({
   ATTACK: 'ATTACK',
   ESCAPE: 'ESCAPE',
   POSITIONING: 'POSITIONING',
+  WAIT: 'WAIT',
   TRAPPED: 'TRAPPED',
 });
+
+// 대기 포즈 (렌더 전용 힌트 — 게임 판정과 무관)
+export const BOT_POSE = Object.freeze({ LOOK_AROUND: 'lookAround', READY: 'ready', DANGER_WAIT: 'dangerWait' });
 const ST = BOT_STATE;
 
 export const BOT_CONFIG = {
   stuckTime: 1.0, // 같은 칸에 이만큼(초) 머물면 STUCK → 경로 폐기 후 재탐색
+  idleMoveAfter: 0.5, // 위험하지 않은데 이만큼 같은 칸이면 다른 칸으로 (왔다 갔다라도)
+  waitRethink: 0.25, // WAIT 상태에서 길 다시 찾기 간격
+  crossMargin: 0.8, // 늦게 터지는 칸을 지나갈 때 폭발 전 여유 (초)
   blockedTime: 0.45, // 이동 입력 중인데 좌표가 그대로면 경로가 막힌 것
   blacklistTime: 4, // STUCK 으로 버린 목표 칸은 잠시 다시 고르지 않는다
   bombEscapeMargin: 0.45, // 폭발 전 안전 칸 도착 여유 (초)
@@ -231,12 +241,14 @@ export class BotBrain {
     this.stuckRecoveries = 0;
     this.lastDir = null;
     this.clock = 0;
+    this.pose = null; // 대기 포즈 힌트 (BOT_POSE)
+    this.prevCell = -1; // 왔다 갔다 할 때 직전 칸
   }
 
   // 매 틱 호출 → intent
   update(gm, dt) {
     const p = gm.players.get(this.playerId);
-    const out = { dir: null, bomb: false, item: false };
+    const out = { dir: null, bomb: false, item: false, pose: null };
     if (!p || p.isEliminated) return out;
     this.clock += dt;
     this.stateTime += dt;
@@ -254,6 +266,7 @@ export class BotBrain {
     if (this.path) out.dir = this._follow(p);
     else if (!out.dir && this._fallbackDir) out.dir = this._fallbackDir;
     this.lastDir = out.dir;
+    out.pose = out.dir ? null : this.pose;
     return out;
   }
 
@@ -273,6 +286,7 @@ export class BotBrain {
     const key = p.cellY * W + p.cellX;
     if (key === this.stuck.key) this.stuck.t += dt;
     else {
+      this.prevCell = this.stuck.key;
       this.stuck.key = key;
       this.stuck.t = 0;
     }
@@ -479,7 +493,13 @@ export class BotBrain {
       const x = k % W;
       const y = (k - x) / W;
       // 막다른 길 / 상대 직선 위는 피한다 (갇히지 않는 위치 확보)
-      const score = field.cost[k] - this._openness(gm, p, x, y) * 0.45 + this._enemyThreat(gm, p, x, y) * 1.5;
+      //   옆에 안전 칸이 하나도 없는 칸(한 칸짜리 구석)은 폭발까지 꼼짝 못 하므로 덜 고른다
+      let safeNb = 0;
+      for (const dir of DIR_NAMES) {
+        const d = DIRS[dir];
+        if (!gm.isBlockedFor(p, x + d.x, y + d.y) && danger[(y + d.y) * W + x + d.x] === INF) safeNb++;
+      }
+      const score = field.cost[k] - this._openness(gm, p, x, y) * 0.45 + this._enemyThreat(gm, p, x, y) * 1.5 + (safeNb === 0 ? 1.2 : 0);
       if (score < bestScore) {
         bestScore = score;
         best = k;
@@ -592,6 +612,7 @@ export class BotBrain {
   think(gm, p) {
     const res = { dir: undefined, bomb: false, item: false };
     this._fallbackDir = null;
+    this.pose = null;
     const { grid } = gm;
     const W = grid.width;
 
@@ -642,6 +663,7 @@ export class BotBrain {
       }
       res.dir = bestDir;
       this._fallbackDir = bestDir;
+      if (!bestDir) this.pose = BOT_POSE.DANGER_WAIT;
       return res;
     }
     // 탈출 완료 → 내 폭탄이 터질 때까지 POSITIONING
@@ -657,10 +679,10 @@ export class BotBrain {
     const field = this._search(gm, p, danger, { strict: true });
 
     // ── 갇힌 팀원 구출 / 갇힌 상대 마무리 (터치) ──
-    for (const o of gm.players.list) {
-      if (o === p || !o.isTrapped) continue;
+    const cap = this._capsuleTarget(gm, p, field);
+    if (cap) {
+      const o = cap.o;
       const k = o.cellY * W + o.cellX;
-      if (field.cost[k] === INF || field.steps[k] > 10) continue;
       this._setState(ST.ATTACK);
       if (k === here) {
         this.path = null;
@@ -711,6 +733,7 @@ export class BotBrain {
     if (!best && cur === null) {
       // 아무 목표도 없으면 → POSITIONING (멈춰 있지 않는다)
       if (!this.path) this._wander(gm, p, danger, field);
+      if (!this.path) this.pose = this._waitPose(gm, p, danger);
       return res;
     }
     if (cur === null || (best && best.score > cur + BOT_CONFIG.switchMargin)) {
@@ -723,8 +746,8 @@ export class BotBrain {
       if (k !== here && field.cost[k] !== INF) this.path = this._pathTo(field, k);
     }
 
-    // 멈춰 서 있지 않기: 위험하지 않은데 0.5초 넘게 같은 칸이면 바로 다른 안전 칸으로 (STUCK CHECK 보다 먼저)
-    if (!this.path && !res.bomb && this.stuck.t > 0.5) {
+    // 멈춰 서 있지 않기: 위험하지 않은데 0.5초 넘게 같은 칸이면 바로 다른 칸으로 (STUCK CHECK 보다 먼저)
+    if (!this.path && !res.bomb && this.stuck.t > BOT_CONFIG.idleMoveAfter) {
       this.blacklist.set(here, this.clock + 2);
       this._wander(gm, p, danger, field);
     }
@@ -736,8 +759,10 @@ export class BotBrain {
       if (n && danger[n.y * W + n.x] !== INF && hitWindow(danger[n.y * W + n.x], this._arrival(p, 1))) {
         this.path = null;
         res.dir = null;
+        this.pose = BOT_POSE.DANGER_WAIT;
       }
     }
+    if (!this.path && !res.bomb && res.dir == null && !this.pose) this.pose = this._waitPose(gm, p, danger);
     return res;
   }
 
@@ -901,12 +926,141 @@ export class BotBrain {
     return best;
   }
 
+  // 목표가 없을 때 — 멈춰 보이지 않도록 순서대로 시도
+  //   1 열린 위치 목표 → 2 바로 옆 안전 칸 (주머니 안에서 왔다 갔다)
+  //   → 3 늦게 터지는 칸을 폭발 전에 지나 밖의 안전 칸으로 → 4 가장 열린 도달 칸
+  //   → 5 WAIT (0.25초마다 다시 찾기 + 대기 포즈)
   _wander(gm, p, danger, field) {
+    const W = gm.grid.width;
+    const here = p.cellY * W + p.cellX;
+    const go = (k, kind, until) => {
+      const x = k % W;
+      const y = (k - x) / W;
+      this.target = { x, y, kind: 'position', score: 0, until: this.clock + until, via: kind };
+      this.path = this._pathTo(field, k);
+      this._setState(ST.POSITIONING);
+      return true;
+    };
+
+    // 1) 열린 위치 목표 (기존 POSITIONING)
     const pos = this._positionTarget(gm, p, danger, field);
-    if (!pos) return;
-    this.target = pos;
-    this.path = this._pathTo(field, pos.y * gm.grid.width + pos.x);
-    this._setState(ST.POSITIONING);
+    if (pos) {
+      this.target = pos;
+      this.path = this._pathTo(field, pos.y * W + pos.x);
+      this._setState(ST.POSITIONING);
+      return true;
+    }
+
+    // 2) 바로 옆 안전 칸 — 방금 온 칸은 마지막에 (같은 두 칸 사이를 천천히 오간다)
+    const near = [];
+    for (const dir of DIR_NAMES) {
+      const d = DIRS[dir];
+      const k = (p.cellY + d.y) * W + p.cellX + d.x;
+      if (field.cost[k] === INF || danger[k] !== INF || k === here) continue;
+      near.push({ k, w: (k === this.prevCell ? 0 : 2) + this._openness(gm, p, p.cellX + d.x, p.cellY + d.y) * 0.3 + this.rng.next() });
+    }
+    near.sort((a, b) => b.w - a.w);
+    if (near.length) return go(near[0].k, 'step', 1.2);
+
+    // 3) 지금 주머니 밖 — 늦게 터지는 칸을 폭발 전에(여유 crossMargin) 지나 안전 칸으로
+    const loose = this._search(gm, p, danger);
+    let bestK = -1;
+    let bestC = INF;
+    for (let k = 0; k < loose.cost.length; k++) {
+      if (loose.cost[k] === INF || danger[k] !== INF || k === here || loose.steps[k] > 10) continue;
+      if (loose.cost[k] >= bestC || !this._crossingSafe(p, this._pathTo(loose, k), danger, W)) continue;
+      bestC = loose.cost[k];
+      bestK = k;
+    }
+    if (bestK >= 0) {
+      const x = bestK % W;
+      const y = (bestK - x) / W;
+      this.target = { x, y, kind: 'position', score: 0, until: this.clock + 2, via: 'cross' };
+      this.path = this._pathTo(loose, bestK);
+      this._setState(ST.POSITIONING);
+      return true;
+    }
+
+    // 4) 가장 열린 도달 칸 (거리 제한 없이)
+    let open = -1;
+    let openW = -INF;
+    for (let k = 0; k < field.cost.length; k++) {
+      if (field.cost[k] === INF || danger[k] !== INF || k === here) continue;
+      const x = k % W;
+      const w = this._openness(gm, p, x, (k - x) / W) - field.steps[k] * 0.05;
+      if (w > openW) {
+        openW = w;
+        open = k;
+      }
+    }
+    if (open >= 0) return go(open, 'open', 3);
+
+    // 5) WAIT — 갈 수 있는 칸이 하나도 없다 (주변이 모두 위험 / 막힘)
+    this.path = null;
+    this.target = null;
+    this._setState(ST.WAIT);
+    this.thinkTimer = Math.min(this.thinkTimer, BOT_CONFIG.waitRethink);
+    return false;
+  }
+
+  // 경로 위의 위험 칸을 "터지기 전(여유 포함)" 또는 "Wave 가 사라진 뒤"에만 지나가는가
+  _crossingSafe(p, path, danger, W) {
+    const linger = GAME_CONFIG.wave.lingerTime;
+    for (let j = 1; j < path.length; j++) {
+      const dv = danger[path[j].y * W + path[j].x];
+      if (dv === INF) continue;
+      const t = this._arrival(p, j);
+      const tLeave = this._arrival(p, j + 1);
+      if (tLeave < dv - BOT_CONFIG.crossMargin) continue;
+      if (t > dv + linger + 0.3) continue;
+      return false;
+    }
+    return true;
+  }
+
+  // 대기 포즈: 주변이 위험하면 Danger Wait / 내 폭탄을 기다리면 Ready / 그 외 Look Around
+  _waitPose(gm, p, danger) {
+    const W = gm.grid.width;
+    for (let dy = -2; dy <= 2; dy++) {
+      for (let dx = -2; dx <= 2; dx++) {
+        const x = p.cellX + dx;
+        const y = p.cellY + dy;
+        if (!gm.grid.inBounds(x, y)) continue;
+        if (danger[y * W + x] !== INF) return BOT_POSE.DANGER_WAIT;
+      }
+    }
+    if (p.activeBombs > 0) return BOT_POSE.READY;
+    return BOT_POSE.LOOK_AROUND;
+  }
+
+  // TEAM: 갇힌 캡슐 목표 점수 — 팀원 구출 긴급도 → 남은 포획 시간 → 경로 거리 → 상대 마무리
+  _capsuleTarget(gm, p, field) {
+    const W = gm.grid.width;
+    const here = p.cellY * W + p.cellX;
+    let best = null;
+    for (const o of gm.players.list) {
+      if (o === p || !o.isTrapped) continue;
+      const k = o.cellY * W + o.cellX;
+      if (k !== here && (field.cost[k] === INF || field.steps[k] > 10)) continue;
+      const steps = k === here ? 0 : field.steps[k];
+      const left = Math.max(0, (o.trap?.maxTime ?? 4) - (o.trap?.time ?? 0));
+      const eta = this._arrival(p, steps);
+      if (eta > left + 0.05) continue; // 도착하기 전에 끝난다 → 다른 일
+      const ally = gm.mode.areAllies(o, p);
+      let score;
+      if (ally) {
+        // 긴급도: 내가 아니면 제때 못 구한다 (다른 팀원이 더 멀다)
+        const others = gm.players.list.filter((a) => a !== p && a !== o && a.isActive && gm.mode.areAllies(a, p));
+        const otherEta = Math.min(INF, ...others.map((a) => (Math.abs(a.cellX - o.cellX) + Math.abs(a.cellY - o.cellY)) / Math.max(1, a.moveSpeed)));
+        const urgent = otherEta > left || otherEta > eta + 0.4 ? 1 : 0;
+        score = 3000 + urgent * 1000 + (4 - left) * 60 - steps * 4;
+      } else {
+        // 상대 마무리: 상대 팀원이 구하러 오기 전에
+        score = 1000 - steps * 4 + (4 - left) * 10;
+      }
+      if (!best || score > best.score) best = { o, score, ally };
+    }
+    return best;
   }
 
   _enemyInLine(gm, p, maxDist) {

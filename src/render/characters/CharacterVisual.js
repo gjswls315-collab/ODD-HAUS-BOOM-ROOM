@@ -168,7 +168,8 @@ export class CharacterVisual {
   }
 
   // state: PLAYER_STATE, speed: 이동속도(칸/초)
-  update(dt, state, stateTime, { speed = 3, moving = false } = {}) {
+  //   pose : 대기 포즈 힌트 (CPU 가 기다릴 때 / 사람이 오래 서 있을 때) — lookAround | ready | dangerWait
+  update(dt, state, stateTime, { speed = 3, moving = false, pose = null } = {}) {
     this.t += dt;
     const r = this.rig;
     const W = this.cfg.walk;
@@ -282,10 +283,62 @@ export class CharacterVisual {
         }
         if (r.head && I.look) r.head.rotation.y = Math.sin(this.t * 0.7) * 0.35;
         if (r.cape) r.cape.rotation.x = -0.08 - Math.sin(this.t * 1.6) * 0.06;
+        this._poseAnim(pose, dt);
       }
     }
     // Rex 처럼 무게중심이 낮은 캐릭터는 걸을 때도 낮게
     if (state === 'MOVE' && this.cfg.idle?.squash) body.scale.y *= this.cfg.idle.squash;
+  }
+
+  // 대기 포즈 — 멈춰 있어도 "얼어붙은" 것처럼 보이지 않게 (판정과 무관)
+  //   lookAround : 몸을 좌우로 돌려 두리번
+  //   ready      : 내 폭탄을 기다리며 제자리에서 통통 (발 구르기)
+  //   dangerWait : 주변이 위험 — 웅크리고 빠르게 떨기
+  _poseAnim(pose, dt) {
+    this.poseW = (this.poseW || 0) + ((pose ? 1 : 0) - (this.poseW || 0)) * Math.min(1, dt * 8);
+    if (pose) this.poseKind = pose;
+    const w = this.poseW;
+    if (w < 0.01) return;
+    const r = this.rig;
+    const body = r.body;
+    const t = this.t;
+    switch (this.poseKind) {
+      case 'lookAround': {
+        const look = Math.sin(t * 1.9);
+        body.rotation.y += look * 0.75 * w;
+        if (r.head) r.head.rotation.y += Math.sin(t * 1.9 + 0.6) * 0.45 * w;
+        if (r.armL && !r.quadruped) r.armL.rotation.z -= Math.max(0, look) * 0.5 * w;
+        break;
+      }
+      case 'ready': {
+        const hop = Math.abs(Math.sin(t * 7.5));
+        body.position.y += hop * 0.07 * w;
+        body.scale.y *= 1 - (1 - hop) * 0.06 * w;
+        if (r.legL) {
+          r.legL.rotation.x += Math.sin(t * 7.5) * 0.35 * w;
+          r.legR.rotation.x -= Math.sin(t * 7.5) * 0.35 * w;
+        }
+        if (r.armL && !r.quadruped) {
+          r.armL.rotation.x -= 0.6 * w;
+          r.armR.rotation.x -= 0.6 * w;
+        }
+        break;
+      }
+      case 'dangerWait': {
+        body.scale.y *= 1 - 0.12 * w;
+        body.position.y -= 0.04 * w;
+        body.rotation.z += Math.sin(t * 38) * 0.06 * w;
+        body.rotation.x += 0.18 * w;
+        if (r.head) r.head.rotation.y += Math.sin(t * 5.3) * 0.5 * w;
+        if (r.armL && !r.quadruped) {
+          r.armL.rotation.z -= 0.9 * w;
+          r.armR.rotation.z += 0.9 * w;
+          r.armL.rotation.x -= 1.3 * w;
+          r.armR.rotation.x -= 1.3 * w;
+        }
+        break;
+      }
+    }
   }
 
   // Beat Bomb 설치 — 판정은 동일, 모션만 캐릭터별

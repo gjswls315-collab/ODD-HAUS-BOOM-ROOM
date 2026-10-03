@@ -10,7 +10,7 @@ const S = PLAYER_STATE;
 // 캐릭터별 Controller(VinController 등)는 만들지 않는다.
 // 캐릭터 차이 = CharacterStats(데이터) + CharacterVisual(렌더 레이어) 뿐.
 //
-// intent = { dir: 'up'|'down'|'left'|'right'|null, bomb: bool, item: bool }
+// intent = { dir: 'up'|'down'|'left'|'right'|null, bomb: bool, item: bool, pose?: 'lookAround'|'ready'|'dangerWait' }
 //   (bomb / item 은 이번 틱에 눌렸는지 — edge trigger)
 // 기본 조작은 이동 / Beat Bomb / Item 뿐. 대시 같은 공통 회피기는 없다 — 이동 속도는 SPEED · 아이템이 담당
 // ─────────────────────────────────────────────────────────────
@@ -42,6 +42,7 @@ export class PlayerController {
 
     this.state = S.IDLE;
     this.stateTime = 0;
+    this.pose = null;
     this.actionTimer = 0;
     this.moving = false;
 
@@ -96,6 +97,7 @@ export class PlayerController {
   // ─────────────────────────────────────────────────
   update(dt, intent, gm) {
     this.stateTime += dt;
+    this.pose = intent.pose || null; // 대기 포즈 힌트 (렌더 전용 — 판정과 무관)
     if (this.invulnerable > 0) this.invulnerable = Math.max(0, this.invulnerable - dt);
     if (this.modifiers.speedOverrideTime > 0) {
       this.modifiers.speedOverrideTime -= dt;
