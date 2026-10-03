@@ -69,7 +69,7 @@ export const GAME_CONFIG = {
   playerColors: ['#ff4a3d', '#3d9bff', '#ffd23f', '#f4f4f4'],
 
   // 경기 시작 위치 화살표 — 카운트다운 동안 + 시작 후 visibleAfterStart 초, 마지막 fadeTime 초에 사라짐
-  startArrow: { visibleAfterStart: 2.5, fadeTime: 0.6 },
+  startArrow: { visibleAfterStart: 1.5, fadeTime: 0.3, quickFade: 0.2 },
   teamColors: { A: '#ff5a4f', B: '#4fb8ff' },
   teamNames: { A: 'RED', B: 'BLUE' },
 };

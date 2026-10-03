@@ -79,19 +79,21 @@ function buildVin() {
   const back = mat('#ffffff', { map: grooveTexture('#ff5a4f', 512), rough: 0.18, metal: 0.45 });
   body.add(mesh(cyl(0.36, 0.36, 0.17, 56), [mat('#0c0c10', { rough: 0.25, metal: 0.4 }), front, back], { p: [0, 0.36, 0], r: [Math.PI / 2, 0, 0] }));
   for (const z of [-0.085, 0.085]) body.add(mesh(torus(0.355, 0.016, 8, 56), mat('#2b2b33', { metal: 0.6, rough: 0.25 }), { p: [0, 0.36, z], cast: false }));
+  // 폭탄(바닥의 납작한 LP 퍽)과 구별: 크고 하얀 눈 + 큰 빨간 신발이 먼저 보이게
   const head = group([], { p: [0, 0.36, 0.09] });
-  const eL = eye(0.125, { look: 0.3 });
-  const eR = eye(0.125, { look: 0.3 });
-  eL.position.set(-0.105, 0.095, 0.02);
-  eR.position.set(0.105, 0.095, 0.02);
+  const eL = eye(0.15, { look: 0.3 });
+  const eR = eye(0.15, { look: 0.3 });
+  eL.position.set(-0.125, 0.09, 0.03);
+  eR.position.set(0.125, 0.09, 0.03);
+  for (const e of [eL, eR]) e.children[0].material = mat(WHITE, { rough: 0.2, emissive: '#ffffff', ei: 0.35 });
   head.add(eL, eR);
   head.add(smile(0.06, -0.095, 0.03, '#e8e8e8', 0.011));
   body.add(head);
   const armL = arm(-0.32, 0.4, 0.2, 0.022, BLACK, glove(), -1);
   const armR = arm(0.32, 0.4, 0.2, 0.022, BLACK, glove(), 1);
   body.add(armL, armR);
-  const legL = leg(-0.11, hipY + 0.02, 0.2, 0.024, BLACK, sneaker('#e63b2e', WHITE, 1.4));
-  const legR = leg(0.11, hipY + 0.02, 0.2, 0.024, BLACK, sneaker('#e63b2e', WHITE, 1.4));
+  const legL = leg(-0.12, hipY + 0.02, 0.2, 0.024, BLACK, sneaker('#ff3a2a', WHITE, 1.65));
+  const legR = leg(0.12, hipY + 0.02, 0.2, 0.024, BLACK, sneaker('#ff3a2a', WHITE, 1.65));
   root.add(legL, legR);
   return rig(root, body, { head, armL, armR, legL, legR, spinPart: body.children[0] });
 }

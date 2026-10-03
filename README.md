@@ -116,60 +116,70 @@ MAX 총합은 맞추지 않고 장단점을 명확하게 했습니다. SPEED 레
 아이템 키는 E 하나입니다. 우선순위: 갇힘+NEEDLE 탈출 → GLOVE 던지기 → ROLLER SKATES → REMOTE.
 KICK·GLOVE·REMOTE 를 "그 판 동안 유지되는 능력"으로 둔 것은 키 하나로 여러 특수 아이템을 함께 쓰기 위한 구현 결정입니다 (`itemConfig.js` 의 `kind` 로 변경 가능).
 
-### 스테이지 6종 (`src/config/stageConfig.js`) — v4 큰 아레나, 모든 기믹 공용
+### 스테이지 6종 (`src/config/stageConfig.js`) — 맵마다 다른 실루엣, 모든 기믹 공용
 
-`#` SOLID(실제 가구) · `B` BREAKABLE(스테이지 소품) · `.` 이동 · `S` SPAWN · `G` GIMMICK
+`#` SOLID(실제 가구) · `B` BREAKABLE(스테이지 소품) · `.` 이동 · `S` SPAWN · `G` GIMMICK · 그 외 글자는 스테이지 전용 가구(예: `T` 커피테이블, `W` 부스 벽, `R` 무대 링)
 
-| # | Stage | 크기 | 맵 데이터 SOLID / BREAKABLE / 빈 칸 | 시작 BREAKABLE (보충 후) | 남긴 기믹 / 이벤트 (지형 변화) |
+| # | Stage | 크기 | 정체성 (한눈에 다른 맵) | 시작 BREAKABLE | 기믹 / 이벤트 (지형 변화) |
 | --- | --- | --- | --- | --- | --- |
-| 01 | LOUNGE (기본기) | 17×15 | 23% / 29% (56) / 48% | 약 77개 | **고정형** — 지형 변화 없음 |
-| 02 | LP LIBRARY (좁은 통로) | 17×15 | 24% / 27% (52) / 49% | 약 77개 | **고정형** — 지형 변화 없음 (숨은 선반 · Rolling LP 제거) |
-| 03 | STUDIO (기계 기믹) | 17×15 | 23% / 28% (54) / 49% | 약 79개 | **거의 고정형** — Amp 는 벽 ↔ 통로 전환 없이 Wave 에 불빛만 반응. REC 예고 후 Sound Pulse (지형은 그대로) |
-| 04 | DJ BOOTH (리듬형) | 17×15 | 23% / 27% (52) / 50% | 약 78개 | **최소 기믹** — 턴테이블 5대 중 중앙 1대만 예고 후 16초마다 둘레 8칸 회전 (나머지 고정). Speaker Drop (폭탄 카운트 가속, 지형 그대로) |
-| 05 | TERRACE (개방형 + 긴 Wave) | 19×15 | 22% / 28% (62) / 50% | 약 88개 | **바람만** — 예고 후 플레이어·아이템 한 칸 밀림, 지형은 고정 |
-| 06 | LOCKED ROOM (고난도) | 19×17 | 24% / 27% (68) / 49% | 약 97개 | **Mr. ODD 이벤트 때만** — 경고 후 가구 1개 이동 · 암전 · 상자 낙하 (90초에 처음, 이후 70초마다 → 한 판 최대 4번) |
+| 01 | LOUNGE (기본기) | 17×15 | **소파 섬 4개** (소파 + 커피테이블 + 러그) 가 중앙 **Floor Lamp**(사이드테이블 4개)를 둘러쌈 | 약 77개 | **고정형** — 지형 변화 없음 |
+| 02 | LP LIBRARY (통로) | 17×15 | **가로로 긴 LP 선반 줄** → 선반 사이 긴 복도(aisle), 중앙 청음 스테이션 줄 | 약 79개 | **고정형** — 지형 변화 없음 |
+| 03 | STUDIO (기계) | 17×15 | 오른쪽 위 **유리 녹음 부스**(입구 3곳, 안에 Amp) + 왼쪽 아래 **5×2 믹서 데스크** → L자 공간, Amp 3대 | 약 78개 | **거의 고정형** — Amp 는 Wave 에 불빛만 반응. REC 예고 후 Sound Pulse (지형 그대로) |
+| 04 | DJ BOOTH (리듬) | 17×15 | 중앙 **대형 턴테이블**을 **네온 무대 링**이 둘러쌈 (동서남북 입구), 모서리 스피커 타워, 양옆 보조 덱 | 약 76개 | **턴테이블은 시각적으로만 회전** — 지형 이동 없음. 16초마다 **BEAT DROP!** 경고 후 중앙 3×3 Sound Pulse. Speaker Drop (폭탄 카운트 가속) |
+| 05 | TERRACE (개방형) | 19×15 | 바깥 **2×2 화단·파티오 세트**, 가운데는 바람 장치만 있는 **넓은 광장** | 약 86개 | **바람만** — 예고 후 플레이어·아이템 한 칸 밀림 |
+| 06 | LOCKED ROOM (고난도) | 19×17 | 조금씩 **비뚤게 놓인 오래된 가구 미로** (비대칭 — 길을 외워야 함), 중앙 Old Audio Machine | 약 96개 | **Mr. ODD 이벤트 때만** — 경고 후 가구 1개 이동 · 암전 · 상자 낙하 (90초에 처음, 이후 70초마다) |
 
-- 맵 데이터는 좌우·상하 대칭입니다. **시작 위치는 매 경기 랜덤** (`src/core/spawns.js`) — 빈 칸 중에서 서로 멀리 떨어진 곳을 고르고, 시작 칸에서 수직인 두 방향으로 2칸씩(L자) 상자를 치워 바로 갇히지 않게 합니다. 턴테이블 링 위에서는 시작하지 않습니다. (`?spawn=fixed` 로 모서리 고정 시작)
-- **시작 BREAKABLE 보충** (`stage.startFill`, `fillBreakables` in `src/core/spawns.js`) — 경기 시작 때 빈 칸의 30~36% 를 스테이지 소품으로 더 채워 시작 상태가 셀의 약 40% 상자가 됩니다. 시작 칸 + L자 여유 칸은 비워 두고, 시작 위치에서 2~4칸 안에는 상자가 최소 5~6개 있도록 보장합니다 → 시작하자마자 "박스 부수기 → 아이템 → 성장".
-- 시작 BREAKABLE 약 77~97개 × 드랍 확률(기본 55%, Terrace 48%, Locked Room 44%) → **한 판 아이템 약 42개**.
+- 맵 전체가 대칭일 필요는 없습니다 — 공정성은 **시작 위치 주변 여유**로 맞춥니다. **시작 위치는 매 경기 랜덤** (`src/core/spawns.js`): 서로 멀리 떨어진 빈 칸, 시작 칸에서 수직 두 방향 2칸씩(L자) 비움, 중앙 전투 구역 · 턴테이블 주변에서는 시작하지 않음. (`?spawn=fixed` 로 모서리 고정 시작)
+- **시작 BREAKABLE 구역 배치** (`stage.startFill`, `fillBreakables`) — 총 수량은 이전과 같고 위치만 나눕니다
+  - **SPAWN FARM ZONE**: 시작 위치에서 2~3칸 → 상자 5~7개 (시작하자마자 부술 상자, 너무 많아 갇히지는 않음)
+  - **SIDE LOOT ZONE**: 맵 가장자리 띠 → 촘촘 (약 65%) — 아이템 파밍 구역
+  - **CENTRAL COMBAT ZONE**: 맵 중앙 → 드문드문 (약 5~10%) — 전투 공간
+  - 그 외 중간 구역 약 45~50%
+- 시작 BREAKABLE 약 76~96개 × 드랍 확률(기본 55%, Terrace 48%, Locked Room 44%) → **한 판 아이템 약 40개**.
 - 스테이지별 BREAKABLE: Lounge LP 박스·책 더미·잡지 박스·쿠션 / LP Library 레코드 크레이트·LP 더미·골판지 상자 / Studio 케이블 케이스·장비 상자·헤드폰 케이스 / DJ Booth 바이닐 크레이트·플라이트 케이스·스피커 케이스 / Terrace 작은 화분·원예 상자·접이식 의자 / Locked Room 오래된 상자·천 덮인 작은 물건·오래된 오디오 케이스
-- `#` 는 벽 블록이 아니라 실제 가구로 보입니다 (소파, 커피테이블, 스피커, 책장, 플로어 램프, 화단, 옷장 …). 대칭 위치에는 같은 가구가 놓입니다.
 
-맵은 ASCII 논리 격자로 정의되고, `#` 를 어떤 가구로 보여줄지(`solids`)와 `G` 의 기믹은 스테이지별 설정입니다. 3D 메쉬(`src/render/propFactory.js`)는 그리드 규칙과 분리되어 있습니다.
+맵은 ASCII 논리 격자로 정의되고, 가구 종류(`solids`, `legend`)와 `G` 의 기믹은 스테이지별 설정입니다. 3D 메쉬(`src/render/propFactory.js`)는 그리드 규칙과 분리되어 있습니다.
 
 ### 경기 템포 (v4)
 
 - 한 판 **5분** (`gameConfig.match`) — 0~70초 **초반 파밍** → **중반 교전** → 200초~ **후반 혼란**
 - 후반에는 스테이지 기믹 / MR. ODD 이벤트 간격이 0.65배로 짧아집니다 (`gameConfig.tempo`, `GameManager.tempoInterval`)
 
-### CPU (v4: State Machine + A* + Stuck Recovery) — `src/core/ai/BotBrain.js`
+### CPU (State Machine + A* + Stuck Recovery) — `src/core/ai/BotBrain.js`
 
 ```
-SCAN → ITEM SEEK → ATTACK → ESCAPE → POSITIONING → SCAN
+SCAN → ITEM SEEK → ATTACK → ESCAPE → POSITIONING → SCAN   (갈 곳이 정말 없을 때만 WAIT)
 ```
 
 - 우선순위: ① 위험 지역 탈출 ② 갇히지 않는 위치 확보 ③ 필요한 성장 아이템 ④ 부술 상자 접근 ⑤ 상대 동선 차단 ⑥ Beat Bomb 설치 ⑦ 특수 아이템 ⑧ 상대 추적
 - **A\***: 칸마다 "곧 터질 칸" 비용, 지나가는 순간 터지는 칸은 통과 불가. 평소 이동은 위험 칸을 아예 피해 ESCAPE ↔ 이동 왕복이 생기지 않습니다
-- **STUCK CHECK**: 같은 칸에 1초 이상 → 경로 폐기 → 새 도달 가능 칸 → 없으면 주변 안전 칸. 위험하지 않은데 0.5초 넘게 서 있으면 그 전에 다른 안전 칸으로 움직입니다. 남는 정지는 주변 폭탄이 터질 때까지 유일한 안전 칸에서 기다리는 경우뿐입니다 (최대 약 3초)
+- **멈춰 보이지 않기** — 목표가 없으면 순서대로: 열린 위치 → 바로 옆 안전 칸(안전 칸 사이를 오감) → 늦게 터지는 칸을 폭발 전에(여유 0.8초) 지나 밖의 안전 칸 → 가장 열린 칸 → 그래도 없으면 **WAIT** (0.25초마다 다시 길 찾기). 기다리는 동안 **Look Around / Ready / Danger Wait** 포즈를 보여 줍니다 (렌더 전용 힌트). 탈출할 때는 한 칸짜리 구석보다 옆에 안전 칸이 있는 곳을 고릅니다
+  - QA (CPU 4인, 랜덤 시작): 평소(NORMAL) 같은 칸 1.5초 이상 정지 **0회**. 주변이 위험해 기다리는 정지는 최대 약 2.9초 (퓨즈 2.6초 + Wave 0.5초 동안 한 칸짜리 구석에 있을 때만)
+- **STUCK CHECK**: 같은 칸에 1초 이상 → 경로 폐기 → 새 도달 가능 칸 → 없으면 주변 안전 칸
 - **필요 기반 아이템**: MAX 인 능력치 아이템은 무시, 가장 부족한 능력치 우선 (예: SPEED 2/5 · BOMB 3/3 · WAVE 1/4 → WAVE UP > SPEED UP > 특수 > BOMB UP 무시)
 - **안전한 설치**: 폭발 전에 도달 가능한, 숨 쉴 공간이 있는 안전 칸이 있을 때만 Beat Bomb 을 놓습니다. 가상 폭탄으로 상대가 피할 칸 수를 계산해 동선을 막습니다
-- 초반엔 파밍, 후반엔 추적 비중이 커집니다. REMOTE 를 가진 상대의 폭탄, DJ BOOTH 턴테이블 회전도 위험으로 계산합니다
+- **TEAM 캡슐 목표 점수**: 팀원 구출 긴급도(내가 아니면 못 구함) → 남은 포획 시간 → 경로 거리 → 상대 마무리. 도착 전에 끝날 캡슐은 포기
+- 초반엔 파밍, 후반엔 추적 비중이 커집니다. REMOTE 를 가진 상대의 폭탄도 위험으로 계산합니다
 
 ### 카메라 · 화면
 
-- **고정 카메라** — 경기 중에는 아레나 전체를 보여주는 시점이 움직이지 않습니다 (따라가기 · 확대 · 흔들림 sway 없음, 폭발 흔들림도 아주 약하게). 경기가 끝난 뒤 승리 연출에서만 승자 쪽으로 다가갑니다. 따라가는 카메라는 `CAMERA_CONFIG.follow = true` 로 다시 켤 수 있습니다 (기본 꺼짐)
-- **시작 위치 화살표** — 카운트다운 동안 + 시작 후 2.5초(마지막 0.6초 페이드아웃) 각 플레이어 머리 위에 굵고 둥근 아래 화살표가 통통 튑니다. P1 빨강 · P2 파랑 · P3 노랑 · P4 흰색(팀전은 팀 색), 검은 외곽선 + 하이라이트 + 은은한 빛 + 바닥 그림자. 휴대폰처럼 아레나가 작게 보이면 더 크게 표시 (`gameConfig.startArrow`)
-- **미니맵** (선택, 기본 꺼짐) — `N` 키 / 타이머 탭으로 토글
-- **격자선 없는 바닥** — 판자 이음새 · 파케이 결 · 타일 음영 · 데크 틈 · 러그 문양 · 빛 웅덩이가 칸 경계에 맞춰 있어 "보드게임판이 된 ODD HAUS 방"처럼 칸이 읽힙니다
-- **Beat Bomb** — 작은 검은 LP 퍽 + 가운데 빛나는 음표/링. Beat 1 주황 펄스 → Beat 2 홈을 따라 도는 파란 빛 → Beat 3 중앙이 밝아짐 → DROP
-- **Sound Wave** — 불꽃이 아니라 바닥을 따라 퍼지는 파란/보라 음파: 레코드 홈 동심원, 얇은 waveform/EQ 라인, 떠오르는 ♪♫, 팔 끝 EQ 바
+- **17×15 이하 맵** (LOUNGE · LP LIBRARY · STUDIO · DJ BOOTH): **고정 카메라** — 아레나 전체, 따라가기·확대 없음
+- **큰 맵** (TERRACE 19×15 · LOCKED ROOM 19×17): **HYBRID** — 시작 후 2.5초 동안 전체 아레나 → 사람 플레이어 위주로 **아주 천천히** 따라가며 살짝 확대 (최대 약 17.5×15.5 칸 표시). 맵 일부는 화면 밖일 수 있지만 **사람 플레이어는 항상 화면 가장자리 2.4칸 안쪽**에 있습니다. 사람이 여럿이면 모두 담기 위해 전체 보기까지 물러납니다 (`CAMERA_CONFIG.hybrid`)
+- 폭발 흔들림은 아주 약하게. 경기가 끝난 뒤 승리 연출에서만 승자 쪽으로 다가갑니다
+- **미니맵** — 큰 맵에서는 **기본 켜짐**, 17×15 이하 맵은 기본 꺼짐. `N` 키 / 타이머 탭으로 토글 (맵 크기별로 따로 기억). 현재 화면 영역을 사각형으로 표시
+- **시작 위치 화살표** — 카운트다운 동안 항상 + 시작 후 **최대 1.5초**. 첫 칸을 벗어나거나 첫 폭탄을 놓으면 그 플레이어의 화살표는 **바로 사라집니다**. P1 빨강 · P2 파랑 · P3 노랑 · P4 흰색(팀전은 팀 색) (`gameConfig.startArrow`)
+- **격자선 없는 바닥** — 판자 이음새 · 파케이 결 · 타일 음영 · 데크 틈 · 러그 문양이 칸 경계에 맞춰 있어 칸이 읽힙니다
+- **Beat Bomb vs VIN** — 폭탄은 **낮고 작은 LP 퍽 + 크게 빛나는 중앙 음표 + 진한 주인 색 바깥 링·테두리 + 바닥 빛 + 항상 은은한 박동**. VIN 은 세워진 LP 몸 + **큰 하얀 눈 + 큰 빨간 신발**이 먼저 보입니다. Beat 1 주황 펄스 → Beat 2 홈을 따라 도는 파란 빛 → Beat 3 중앙이 밝아짐 → DROP
+- **Sound Capsule 피격** (렌더 전용) — 0.12초 Hit-stop(멈춤 + 하얀 번쩍) → Squash → 비눗방울 **POP!** → Capsule
+- **MAX 능력치 아이템** — 헛걸음이 아니라 **MAX BONUS +1** (결과 화면 표시, 시간 종료 시 점수가 같으면 우선), **3번째마다 무작위 특수 아이템**으로 변환 (`itemConfig.MAX_STAT_REWARD`)
+- **Sound Wave** — 불꽃이 아니라 바닥을 따라 퍼지는 파란/보라 음파
 
 ### 게임 모드
 
 - **BATTLE MODE** — 2~4인, Last Player Standing (제한시간 종료 시 생존자 점수 판정)
 - **TEAM MODE** — 2 VS 2, 갇힌 팀원 구출, 팀 전원 포획 시 팀 탈락
 - ITEM / HOUSE EVENT / CO-OP / CUSTOM — 타이틀에 COMING SOON 으로 표시 (확장 예정)
-- 빈 슬롯은 **CPU** 로 채울 수 있음 — CPU 도 사람과 같은 intent(이동/폭탄/대시/아이템)를 공통 PlayerController 에 넣습니다
+- 빈 슬롯은 **CPU** 로 채울 수 있음 — CPU 도 사람과 같은 intent(이동/폭탄/아이템)를 공통 PlayerController 에 넣습니다
 
 ---
 
@@ -182,13 +192,13 @@ src/
 │   ├── characterVisualConfig.js GLB 경로 + 애니메이션 personality (판정과 무관)
 │   ├── itemConfig.js           ITEM_TYPES / DROP_TABLES / RANDOM_BOX_POOL
 │   ├── stageConfig.js          6개 Arena 논리 그리드 + 기믹 + House Event + 테마
-│   ├── gameConfig.js           퓨즈·Wave·포획·대시·속도표 등 공통 규칙 수치
+│   ├── gameConfig.js           퓨즈·Wave·포획·속도표·시작 화살표 등 공통 규칙 수치
 │   └── inputConfig.js          키 프로필 (Q 미사용)
 ├── core/                       ← 순수 시뮬레이션 (Three.js / DOM 의존 없음, 고정 60Hz 틱)
 │   ├── GameManager.js          경기 1판: 단계(카운트다운/진행/종료), 이벤트 큐
 │   ├── GridManager.js          논리 그리드, 가구 그룹, 파괴/이동
 │   ├── PlayerManager.js        생성·스폰, Sound Capsule 포획/구출/탈락
-│   ├── PlayerController.js     ★ 모든 캐릭터 공통 컨트롤러 (이동·대시·설치·아이템)
+│   ├── PlayerController.js     ★ 모든 캐릭터 공통 컨트롤러 (이동·설치·아이템)
 │   ├── CharacterStats.js       start/current/max — min(start + items, max)
 │   ├── BeatBombManager.js      설치·카운트·DROP·Kick 슬라이드·Throw 비행
 │   ├── SoundWaveManager.js     십자 전파, 파괴, Chain Reaction, linger 판정
@@ -222,11 +232,13 @@ src/
 ## 캐릭터 GLB
 
 `public/assets/characters/<id>/...glb` 에 넣으면 자동 사용 (경로표: `public/assets/characters/README.md`).
-없으면 캐릭터 업그레이드 시트를 따른 **3D Placeholder** 를 사용합니다. 2D Sprite 대체는 하지 않습니다.
+없으면 캐릭터 업그레이드 시트를 따른 **3D Placeholder** 를 사용합니다 (최종 모델이 아님). 2D Sprite 대체는 하지 않습니다.
+
+**GLB 제작 우선순위**: VIN → PICKER → BUDDY → A.A. → LOCKE → REX → BULLY → MR. ODD. GLB 가 들어와도 판정 · 충돌 · 능력치는 바뀌지 않습니다.
 
 | 캐릭터 | v4 Placeholder 포인트 |
 | --- | --- |
-| VIN | 더 두꺼운 LP 몸, 빛을 받으면 보이는 홈, 더 큰 빨간 신발 (Beat Bomb 은 빛나는 중앙 링으로 구별) |
+| VIN | 더 두꺼운 LP 몸, 빛을 받으면 보이는 홈, **큰 하얀 눈 + 큰 빨간 신발** (바닥의 납작한 Beat Bomb 과 구별) |
 | PICKER | 더 긴 아래 끝 · 넓은 윗면, 큰 X 반창고, 진한 눈썹, 검은 팔다리 |
 | A.A. | 큰 금속 캡, 빵빵한 비니, 선명한 노랑/파랑, 작은 충전 LED, 졸린 눈 |
 | LOCKE | 과장된 열쇠 톱니, 긴 몸통, 작은 모자 · 배낭, 초록 재킷, 오래된 황동 |
@@ -239,7 +251,7 @@ src/
 
 ## 테스트 (마스터 프롬프트 39절 기준)
 
-`npm test` — 98개
+`npm test` — 106개
 
 | 39절 기준 | 테스트 |
 | --- | --- |
@@ -248,9 +260,9 @@ src/
 | A.A.: Bomb Capacity 차이 | 〃 |
 | REX: Wave Range 차이 | 〃 |
 | 7명 모두 Move / Bomb / Item / Trap / Victory 동일 시스템 | 〃 |
-| Beat Bomb · Wave · Chain Reaction · 아이템 10종 · NEEDLE · 포획/구출 · 팀 모드 | `bombWave.test.js`, `itemsTrap.test.js` |
-| 6개 v4 맵 크기 · 대칭 · SOLID/BREAKABLE/빈 칸 비율 · 시작 위치 여유 · 가구형 SOLID · 아이템 수 · 기믹 · MR. ODD House Event · 경기 템포 | `stages.test.js` |
-| CPU 상태 이름 · 필요 기반 아이템 · 안전한 폭탄 설치 · ESCAPE · STUCK CHECK · 멈추지 않는 CPU | `botBrain.test.js` |
+| Beat Bomb · Wave · Chain Reaction · 아이템 10종 · MAX BONUS · NEEDLE · 포획/구출 · 팀 모드 | `bombWave.test.js`, `itemsTrap.test.js` |
+| 6개 맵 크기 · 맵 정체성(소파 섬 · 선반 통로 · 녹음 부스 · 무대 링 · 광장 · 비대칭 미로) · 가구 비율 · 시작 위치 여유 · 구역별 시작 상자 · 아이템 수 · 기믹 · MR. ODD House Event · 경기 템포 · 화살표 타이밍 | `stages.test.js` |
+| CPU 상태 이름 · 필요 기반 아이템 · 안전한 폭탄 설치 · ESCAPE · STUCK CHECK · 멈춰 보이지 않는 CPU (NORMAL < 1.5초) · 대체 이동 순서 · WAIT · TEAM 캡슐 우선순위 | `botBrain.test.js` |
 | 스킬/캐릭터별 컨트롤러/Q 바인딩 재유입 방지, 코어의 Three.js 비의존 | `architecture.test.js` |
 | 모든 스테이지 × BATTLE/TEAM, CPU 4인 150초 무오류 | `architecture.test.js` |
 

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { makeGame, run, press, placeAt, DT } from './helpers.js';
 import { GAME_CONFIG } from '../src/config/gameConfig.js';
-import { ITEM_TYPES, DROP_TABLES } from '../src/config/itemConfig.js';
+import { ITEM_TYPES, DROP_TABLES, MAX_STAT_REWARD, SPECIAL_POOL } from '../src/config/itemConfig.js';
 
 function trapBy(gm, victim, byId = null) {
   gm.players.trapPlayer(victim, byId);
@@ -23,6 +23,34 @@ describe('Items — shared by everyone, separate from base stats', () => {
     expect(w.speedUp / total).toBeCloseTo(0.3, 2);
     expect(w.bombUp / total).toBeCloseTo(0.3, 2);
     expect(w.waveUp / total).toBeCloseTo(0.3, 2);
+  });
+
+  it('MAX stat item is never wasted: +1 MAX BONUS each, every 3rd turns into a random special', () => {
+    const gm = makeGame({ chars: ['vin', 'picker'] });
+    const vin = gm.players.get(0);
+    const feed = (type) => {
+      gm.items.spawn(type, vin.cellX, vin.cellY);
+      gm.step(DT, {});
+    };
+    feed('speedUp'); // 3 → 4 (VIN MAX 4)
+    expect(vin.bonus).toBe(0);
+    const before = { abilities: { ...vin.abilities }, held: vin.heldItem?.type ?? null };
+    feed('speedUp');
+    feed('speedUp');
+    expect(vin.stats.current.speed).toBe(4);
+    expect(vin.bonus).toBe(2 * MAX_STAT_REWARD.bonus);
+    expect(gm.events.filter((e) => e.type === 'maxSpecial').length).toBe(0);
+    feed('speedUp'); // 3번째 MAX 픽업 → 특수 아이템
+    expect(vin.bonus).toBe(3 * MAX_STAT_REWARD.bonus);
+    const sp = gm.events.find((e) => e.type === 'maxSpecial');
+    expect(sp).toBeTruthy();
+    expect(Object.keys(SPECIAL_POOL)).toContain(sp.resolved);
+    const got = ITEM_TYPES[sp.resolved].kind === 'ability' ? vin.abilities[sp.resolved] && !before.abilities[sp.resolved] : vin.heldItem?.type === sp.resolved;
+    expect(got).toBe(true);
+    expect(gm.events.filter((e) => e.type === 'itemPicked' && e.maxBonus).length).toBe(3);
+    // 시간 종료 시 점수가 같으면 MAX BONUS 가 많은 쪽이 이긴다
+    const r = gm.mode.timeUp(gm);
+    expect(r.winnerIds).toEqual([vin.id]);
   });
 
   it('held slot (shield / needle / skates): a new one replaces it; abilities stack', () => {

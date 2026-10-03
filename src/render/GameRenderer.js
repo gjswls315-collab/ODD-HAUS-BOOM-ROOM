@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { StageView } from './StageView.js';
-import { PlayerView, BombView, WaveView, ItemView, TelegraphView, RollingLpView, MrOddView } from './EntityViews.js';
+import { PlayerView, BombView, WaveView, ItemView, TelegraphView, RollingLpView, MrOddView, HIT_FX } from './EntityViews.js';
 import { Fx } from './Fx.js';
 import { damp } from './kit.js';
 import { ITEM_TYPES } from '../config/itemConfig.js';
@@ -15,12 +15,25 @@ import { GAME_CONFIG } from '../config/gameConfig.js';
 const PITCH = THREE.MathUtils.degToRad(50);
 const FOV = 34;
 
-// 카메라: 경기 중에는 아레나 전체를 보여주는 고정 시점 (따라가기 / 확대 / 흔들림 없음).
-//   follow = true 로 바꾸면 플레이어를 따라가는 Soft Follow + Dynamic Zoom 이 다시 켜진다 (기본 꺼짐).
+// 카메라
+//   17×15 이하 맵 : 아레나 전체를 보여주는 고정 시점 (따라가기 / 확대 없음)
+//   더 큰 맵 (TERRACE 19×15 · LOCKED ROOM 19×17) : HYBRID
+//     시작 후 hybrid.startHold 초 동안 전체 보기 → 사람 플레이어 위주로 아주 천천히 따라가며 살짝 확대
+//     (최대 약 17.5×15.5 칸이 보인다 — 맵 일부는 화면 밖일 수 있지만 사람 플레이어는 절대 화면 밖으로 나가지 않는다)
+//   follow = true 로 바꾸면 모든 맵에서 예전 Soft Follow + Dynamic Zoom.
 //   경기 종료 후 승리 연출에서만 승자 쪽으로 다가간다.
 export const CAMERA_CONFIG = {
   follow: false,
-  shake: 0.08, // 폭발 시 아주 약한 흔들림 (화면이 움직이는 느낌이 없도록)
+  hybrid: {
+    startHold: 2.5, // 시작 후 전체 아레나를 보여주는 시간
+    followRate: 0.9, // 아주 천천히 따라간다
+    zoomRate: 0.3, // 확대/축소는 더 천천히
+    minView: [16, 13.5], // 가장 가까울 때 보이는 칸 수
+    maxView: [17.5, 15.5], // 평소 (가장 멀 때) — 이보다 큰 맵은 일부가 화면 밖
+    humanMargin: 2.4, // 사람 플레이어와 화면 가장자리 사이 최소 칸 수
+    groupPull: 0.3, // 중심을 다른 플레이어 쪽으로 당기는 비율 (사람 0.7 : 나머지 0.3)
+  },
+  shake: 0.06, // 폭발 시 아주 약한 흔들림 (화면이 움직이는 느낌이 없도록)
   minView: [14, 10.5], // 가장 가까울 때 보이는 칸 수 (가로, 세로) — 너무 바짝 당기지 않는다
   maxView: [17.5, 15.5], // 가장 멀 때 — 17×15 맵은 전부 보이고, 이보다 큰 맵은 일부가 화면 밖
   margin: 2.6, // 플레이어 묶음 바깥 여유 칸
@@ -136,15 +149,22 @@ export class GameRenderer {
 
   toWorld = (x, y) => ({ x: x - (this.W - 1) / 2, z: y - (this.H - 1) / 2 });
 
-  setMatch(gm, { hudTopPx = 96, bottomPx = 0, dynamic = CAMERA_CONFIG.follow, startArrows = true } = {}) {
+  // dynamic: 'auto' (맵 크기로 결정) | true (Soft Follow) | false (고정)
+  setMatch(gm, { hudTopPx = 96, bottomPx = 0, dynamic = 'auto', startArrows = true } = {}) {
     this.clearMatch();
     this.gm = gm;
     this.hudTopPx = hudTopPx;
     this.bottomPx = bottomPx;
-    this.dynamicCamera = dynamic;
     this.startArrows = startArrows;
     this.W = gm.grid.width;
     this.H = gm.grid.height;
+    const big = this.W > 17 || this.H > 15;
+    this.cameraMode = dynamic === 'auto' ? (CAMERA_CONFIG.follow ? 'follow' : big ? 'hybrid' : 'fixed') : dynamic ? 'follow' : 'fixed';
+    this.dynamicCamera = this.cameraMode === 'follow';
+    // 시작 위치 화살표: 첫 칸을 벗어나거나 첫 폭탄을 놓으면 바로 사라진다
+    this.startCells = new Map(gm.players.list.map((p) => [p.id, `${p.cellX},${p.cellY}`]));
+    this.arrowGone = new Set();
+    this.arrowA = new Map();
     const th = gm.stageDef.theme;
     this.scene.background = new THREE.Color(th.fog);
     this.scene.fog = new THREE.Fog(th.fog, 26, 60);
@@ -184,6 +204,7 @@ export class GameRenderer {
 
   clearMatch() {
     if (!this.gm) return;
+    this.pending = [];
     this.fx?.dispose();
     this.matchRoot.removeFromParent();
     this.gm = null;
@@ -280,6 +301,9 @@ export class GameRenderer {
     const C = CAMERA_CONFIG;
     this.camMin = Math.min(this.camBase.dist, this._distFor(C.minView[0], C.minView[1]));
     this.camMax = Math.min(this.camBase.dist, Math.max(this.camMin, this._distFor(C.maxView[0], C.maxView[1])));
+    const Hy = C.hybrid;
+    this.hybMin = Math.min(this.camBase.dist, this._distFor(Hy.minView[0], Hy.minView[1]));
+    this.hybMax = Math.min(this.camBase.dist, Math.max(this.hybMin, this._distFor(Hy.maxView[0], Hy.maxView[1])));
   }
 
   _distFor(w, h) {
@@ -310,11 +334,17 @@ export class GameRenderer {
     this.trauma = Math.min(1, this.trauma + amount);
   }
 
+  // 짧은 지연 연출 (렌더 시간 기준)
+  _later(delay, fn) {
+    (this.pending ||= []).push({ at: this.t + delay, fn });
+  }
+
   // 시뮬레이션 이벤트 → 연출
   handleEvents(events) {
     if (!this.gm) return;
     const gm = this.gm;
     for (const e of events) {
+      if (e.type === 'bombPlaced' && this.arrowGone) this.arrowGone.add(e.playerId);
       switch (e.type) {
         case 'explosion': {
           const ex = gm.waves.explosions.find((x) => x.id === e.explosionId);
@@ -344,15 +374,28 @@ export class GameRenderer {
           const def = ITEM_TYPES[e.itemType];
           let text = def.label;
           if (def.kind === 'stat') text = e.gained > 0 ? `${def.stat.toUpperCase()} ${e.value}` : `${def.stat.toUpperCase()} MAX`;
-          this.fx.floatText({ x: w.x, y: 1.5, z: w.z }, text, e.gained === 0 && def.kind === 'stat' ? '#ff9a9a' : def.color);
+          if (e.maxBonus) {
+            // MAX 보상: +1 BONUS, 3번째마다 특수 아이템으로 변환
+            text = e.converts ? 'MAX ×3 → SPECIAL!' : `MAX BONUS +${e.maxBonus}`;
+            this.fx.floatText({ x: w.x, y: 1.5, z: w.z }, text, '#ffd166');
+            this.fx.sparkle({ x: w.x, y: 0.6, z: w.z }, '#ffd166', e.converts ? 30 : 14);
+            if (e.converts) this.fx.ringPulse({ x: w.x, z: w.z }, '#ffd166', { to: 1.4 });
+            break;
+          }
+          this.fx.floatText({ x: w.x, y: 1.5, z: w.z }, text, def.color);
           this.fx.sparkle({ x: w.x, y: 0.6, z: w.z }, def.color, 16);
           break;
         }
         case 'playerTrapped': {
+          // Hit-stop(0.12초) 동안은 조용히 → Squash 끝에 비눗방울 POP 이펙트
           const p = gm.players.get(e.playerId);
           const w = this.toWorld(p.x, p.y);
-          this.fx.ringPulse({ x: w.x, z: w.z }, '#b46bff', { to: 1.6 });
-          this.fx.sparkle({ x: w.x, y: 0.7, z: w.z }, '#d9c2ff', 20);
+          this.shake(0.12);
+          this._later(HIT_FX.squash - 0.04, () => {
+            this.fx.ringPulse({ x: w.x, z: w.z }, '#b46bff', { to: 1.6 });
+            this.fx.sparkle({ x: w.x, y: 0.7, z: w.z }, '#d9c2ff', 22);
+            this.fx.floatText({ x: w.x, y: 1.5, z: w.z }, 'POP!', '#e8dcff');
+          });
           break;
         }
         case 'playerRescued': {
@@ -446,12 +489,20 @@ export class GameRenderer {
       this.stageView.update(dt, { beat, lightsOut, rec: rec ? rec.visual : null });
       if (this.stageView.recSign && rec) this.stageView.recSign.material.opacity = rec.state === 'rec' ? 0.7 + Math.sin(this.t * 8) * 0.3 : 0.25;
 
-      // 플레이어 (+ 경기 시작 위치 화살표: 카운트다운 동안 + 시작 후 잠깐)
+      // 플레이어 (+ 경기 시작 위치 화살표: 카운트다운 동안 항상 + 시작 후 최대 visibleAfterStart 초)
+      //   시작 후 첫 칸을 벗어나거나 첫 폭탄을 놓으면 그 플레이어의 화살표는 바로 사라진다
       const sa = GAME_CONFIG.startArrow;
-      const arrowAlpha = !this.startArrows ? 0 : gm.phase === 'COUNTDOWN' ? 1 : gm.phase === 'PLAYING' ? Math.max(0, Math.min(1, (sa.visibleAfterStart - gm.matchTime) / sa.fadeTime)) : 0;
+      const baseAlpha = !this.startArrows ? 0 : gm.phase === 'COUNTDOWN' ? 1 : gm.phase === 'PLAYING' ? Math.max(0, Math.min(1, (sa.visibleAfterStart - gm.matchTime) / sa.fadeTime)) : 0;
       // 화면에서 아레나가 작게 보일수록(휴대폰 세로 등) 화살표를 키운다
       const arrowScale = Math.max(1, Math.min(1.8, (this.camBase.dist || 22) / 22));
-      for (const p of gm.players.list) this.playerViews.get(p.id)?.update(dt, p, this.t, { arrowAlpha, arrowScale });
+      for (const p of gm.players.list) {
+        if (gm.phase === 'PLAYING' && this.startCells.get(p.id) !== `${p.cellX},${p.cellY}`) this.arrowGone.add(p.id);
+        const want = this.arrowGone.has(p.id) ? 0 : baseAlpha;
+        const prev = this.arrowA.get(p.id) ?? want;
+        const a = want < prev ? Math.max(want, prev - dt / sa.quickFade) : want;
+        this.arrowA.set(p.id, a);
+        this.playerViews.get(p.id)?.update(dt, p, this.t, { arrowAlpha: a, arrowScale });
+      }
       this._speedTrails(dt, gm);
 
       // 폭탄
@@ -501,6 +552,11 @@ export class GameRenderer {
       });
       this.flash.intensity = damp(this.flash.intensity, 0, 10, dt);
 
+      if (this.pending?.length) {
+        const due = this.pending.filter((q) => q.at <= this.t);
+        this.pending = this.pending.filter((q) => q.at > this.t);
+        for (const q of due) q.fn();
+      }
       this.telegraph.update(dt, gm.getTelegraphs());
       this.rollingLp.update(dt, gm.stage.get('rollingLp')?.visual, this.toWorld);
       this.mrOdd.update(dt);
@@ -528,6 +584,56 @@ export class GameRenderer {
       box.y1 = Math.max(box.y1, p.y);
     }
     return { box, cx: (box.x0 + box.x1) / 2, cy: (box.y0 + box.y1) / 2, humans: alive.filter((p) => !p.isBot) };
+  }
+
+  // HYBRID 카메라 목표: 사람 플레이어 위주 (나머지 쪽으로 groupPull 만큼), 사람은 항상 화면 안
+  _hybridView() {
+    const Hy = CAMERA_CONFIG.hybrid;
+    const alive = this.gm.players.list.filter((p) => !p.isEliminated);
+    if (!alive.length) return null;
+    const humans = alive.filter((p) => !p.isBot);
+    const focus = humans.length ? humans : alive;
+    const box = (ps) => {
+      const b = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+      for (const p of ps) {
+        b.x0 = Math.min(b.x0, p.x);
+        b.x1 = Math.max(b.x1, p.x);
+        b.y0 = Math.min(b.y0, p.y);
+        b.y1 = Math.max(b.y1, p.y);
+      }
+      return b;
+    };
+    const fb = box(focus);
+    const ab = box(alive);
+    const pull = humans.length && humans.length < alive.length ? Hy.groupPull : 0;
+    let cx = ((fb.x0 + fb.x1) / 2) * (1 - pull) + ((ab.x0 + ab.x1) / 2) * pull;
+    let cy = ((fb.y0 + fb.y1) / 2) * (1 - pull) + ((ab.y0 + ab.y1) / 2) * pull;
+    // 거리: 평소 maxView. 사람 여럿이 멀리 떨어지면 전체 보기까지 물러난다. 주변이 한산하면 아주 살짝 다가간다
+    const m = Hy.humanMargin;
+    const need = this._distFor(fb.x1 - fb.x0 + 1 + m * 2, fb.y1 - fb.y0 + 1 + m * 2);
+    let near = 0;
+    for (const p of alive) if (!focus.includes(p) && Math.abs(p.x - cx) + Math.abs(p.y - cy) < 7) near++;
+    const calm = near === 0 ? this.hybMin : this.hybMax;
+    const dist = Math.min(this.camBase.dist, Math.max(calm, need));
+    const view = this._viewSize(dist);
+    // 사람(또는 집중 대상)이 화면 가장자리 m 칸 안으로 들어오지 않게 중심을 옮긴다
+    const hx = Math.max(0, view.w / 2 - m);
+    const hy = Math.max(0, view.h / 2 - m);
+    for (const p of focus) {
+      if (p.x > cx + hx) cx = p.x - hx;
+      if (p.x < cx - hx) cx = p.x + hx;
+      if (p.y > cy + hy) cy = p.y - hy;
+      if (p.y < cy - hy) cy = p.y + hy;
+    }
+    // 맵 밖 빈 공간이 많이 보이지 않도록 아레나 안쪽으로 제한
+    const base = this.camBase.target;
+    const w = this.toWorld(cx, cy);
+    const limX = Math.max(0, (this.W - view.w) / 2 + 0.6);
+    const limZ = Math.max(0, (this.H - view.h) / 2 + 0.6);
+    return {
+      target: new THREE.Vector3(THREE.MathUtils.clamp(w.x, base.x - limX, base.x + limX), 0, THREE.MathUtils.clamp(w.z + base.z, base.z - limZ, base.z + limZ)),
+      dist,
+    };
   }
 
   // SPEED 가 오를수록 발밑 먼지 자국이 촘촘해진다 (아이템으로 빨라진 걸 눈으로 확인)
@@ -565,6 +671,14 @@ export class GameRenderer {
         dist = this.camBase.dist * 0.45;
         follow = 3;
         zoom = 3;
+      }
+    } else if (this.cameraMode === 'hybrid' && this.zoomModel && gm.phase !== 'COUNTDOWN' && gm.matchTime > CAMERA_CONFIG.hybrid.startHold) {
+      const h = this._hybridView();
+      if (h) {
+        target = h.target;
+        dist = h.dist;
+        follow = CAMERA_CONFIG.hybrid.followRate;
+        zoom = CAMERA_CONFIG.hybrid.zoomRate;
       }
     } else if (this.dynamicCamera && this.zoomModel && gm.phase !== 'COUNTDOWN' && gm.matchTime > CAMERA_CONFIG.startHold) {
       const it = this._interest();

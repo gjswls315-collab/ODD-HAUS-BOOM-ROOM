@@ -58,7 +58,12 @@ class BattleRules {
     const alive = gm.players.alive();
     if (!alive.length) return { type: 'draw', winnerIds: [], team: null, reason: 'timeUp' };
     const best = Math.max(...alive.map((p) => p.score));
-    const top = alive.filter((p) => p.score === best);
+    let top = alive.filter((p) => p.score === best);
+    // 점수가 같으면 MAX BONUS 가 많은 쪽
+    if (top.length > 1) {
+      const bb = Math.max(...top.map((p) => p.bonus || 0));
+      top = top.filter((p) => (p.bonus || 0) === bb);
+    }
     if (top.length === 1) return { type: 'win', winnerIds: [top[0].id], team: null, reason: 'timeUp' };
     return { type: 'draw', winnerIds: [], team: null, reason: 'timeUp' };
   }

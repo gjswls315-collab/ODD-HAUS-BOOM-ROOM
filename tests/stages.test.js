@@ -471,11 +471,12 @@ describe('Random start positions (every match starts somewhere different)', () =
 });
 
 describe('Match start player position indicator', () => {
-  it('arrows show during the countdown and ~2.5s after GO, in P1 red / P2 blue / P3 yellow / P4 white', () => {
+  it('arrows show during the countdown and at most 1.5s after GO (gone at once on first move / bomb), in P1 red / P2 blue / P3 yellow / P4 white', () => {
     const a = GAME_CONFIG.startArrow;
-    expect(a.visibleAfterStart).toBeGreaterThanOrEqual(2);
-    expect(a.visibleAfterStart).toBeLessThanOrEqual(3);
+    expect(a.visibleAfterStart).toBeGreaterThan(0);
+    expect(a.visibleAfterStart).toBeLessThanOrEqual(1.5);
     expect(a.fadeTime).toBeLessThan(a.visibleAfterStart);
+    expect(a.quickFade).toBeLessThanOrEqual(0.25);
     const [p1, p2, p3, p4] = GAME_CONFIG.playerColors.map((h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)));
     expect(p1[0]).toBeGreaterThan(200); // red
     expect(p1[1]).toBeLessThan(120);

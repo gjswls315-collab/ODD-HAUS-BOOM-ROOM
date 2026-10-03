@@ -132,6 +132,11 @@ export class PlayerView {
     this.capsule.add(this.timerArc);
     this.capsule.visible = false;
     this.root.add(this.capsule);
+    // 맞는 순간 하얀 번쩍임 (Hit-stop 연출용)
+    this.hitFlash = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: '#ffffff', transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+    this.hitFlash.scale.set(1.7, 1.7, 1);
+    this.hitFlash.position.set(0, 0.55, 0);
+    this.root.add(this.hitFlash);
 
     // Shield / 무적 버블
     this.shield = mesh(sphere(0.6, 24, 16), basic('#7f9bff', { opacity: 0.18, additive: true }), { p: [0, 0.55, 0], cast: false });
@@ -211,14 +216,30 @@ export class PlayerView {
     this.visualHolder.position.y = 0;
     this.visualHolder.scale.setScalar(this.visualScale);
 
-    // 대기 포즈: CPU 는 BotBrain 힌트, 사람은 오래(1.6초+) 서 있으면 두리번
-    const pose = p.pose || (state === 'IDLE' && p.stateTime > 1.6 ? 'lookAround' : null);
-    this.visual.update(dt, state, p.stateTime, { speed: p.moveSpeed, moving: p.moving, pose });
-
+    // Sound Capsule 피격 연출 (렌더 전용 — 판정은 이미 TRAPPED)
+    //   0 ~ HIT  : Hit-stop — 캐릭터가 그 자세로 멈추고 하얗게 번쩍
+    //   ~ SQUASH : 납작하게 눌렸다가
+    //   ~ POP    : 비눗방울이 "퐁" 하고 부풀며 Capsule 완성
     const trapped = state === 'TRAPPED';
-    this.capsule.visible = trapped;
+    const tt = trapped ? p.stateTime : 9;
+    const HC = HIT_FX;
+    const frozen = trapped && tt < HC.hitStop;
+    this.hitFlash.material.opacity = trapped && tt < HC.squash ? 0.95 * (1 - tt / HC.squash) : 0;
+    if (!frozen) {
+      // 대기 포즈: CPU 는 BotBrain 힌트, 사람은 오래(1.6초+) 서 있으면 두리번
+      const pose = p.pose || (state === 'IDLE' && p.stateTime > 1.6 ? 'lookAround' : null);
+      this.visual.update(dt, state, Math.max(0, p.stateTime - (trapped ? HC.hitStop : 0)), { speed: p.moveSpeed, moving: p.moving, pose });
+    }
+    if (trapped && tt < HC.squash) {
+      const k = Math.sin(clamp01((tt - HC.hitStop) / (HC.squash - HC.hitStop)) * Math.PI);
+      const vs = this.visualScale;
+      this.visualHolder.scale.set(vs * (1 + 0.32 * k), vs * (1 - 0.38 * k), vs * (1 + 0.32 * k));
+    }
+    this.capsule.visible = trapped && tt >= HC.squash - 0.05;
     if (trapped && p.trap) {
       const frac = 1 - p.trap.time / p.trap.maxTime;
+      const pop = clamp01((tt - (HC.squash - 0.05)) / (HC.pop - HC.squash + 0.05));
+      this.capsule.scale.setScalar(pop < 1 ? 0.25 + 0.75 * easeOutBack(pop) : 1);
       this.capsule.children[0].scale.setScalar(1 + Math.sin(t * 6) * 0.03);
       this.capsule.rotation.y += dt * 0.8;
       if (Math.abs(frac - this.lastArcFrac) > 0.01) {
@@ -238,6 +259,9 @@ export class PlayerView {
   }
 }
 
+// Sound Capsule 피격 타이밍 (초) — Hit-stop 0.12 → Squash → Bubble POP
+export const HIT_FX = { hitStop: 0.12, squash: 0.26, pop: 0.42 };
+
 // ── Beat Bomb ─────────────────────────────────────────────
 // ── Beat Bomb — 작은 검은 LP 퍽 + 가운데 빛나는 음표 ─────────────
 //   Beat 1 : 작은 주황 펄스      Beat 2 : 홈을 따라 도는 파란 빛      Beat 3 : 중앙이 밝아짐 → DROP
@@ -245,34 +269,42 @@ const AMBER = new THREE.Color('#ffb347');
 const BLUE = new THREE.Color('#4fb8ff');
 const HOT = new THREE.Color('#fff4d0');
 export class BombView {
+  // 읽기 쉬운 Beat Bomb: 낮고 작은 LP 퍽 · 크게 빛나는 중앙 음표 · 진한 주인 색 바깥 링 · 바닥 빛 · 항상 은은한 박동
+  //   (VIN 은 세워진 LP 몸 + 큰 하얀 눈 + 빨간 신발 — 바닥에 납작하게 놓인 폭탄과 실루엣이 다르다)
   constructor(parent, bomb, color) {
     this.root = group();
     this.body = group();
     const groove = mat('#ffffff', { map: grooveTexture('#16161c', 256), rough: 0.28, metal: 0.25 });
     const vinyl = mat('#0e0e13', { rough: 0.35, metal: 0.4 });
-    // 납작한 LP 퍽 (윗면 = 레코드 홈)
-    this.body.add(mesh(cyl(0.34, 0.36, 0.13, 40), [vinyl, groove, vinyl], { p: [0, 0.075, 0] }));
-    this.body.add(mesh(cyl(0.37, 0.37, 0.025, 40), mat('#1d1d24', { rough: 0.5 }), { p: [0, 0.012, 0] }));
-    // 가운데 라벨 = 빛나는 음표 + 빛나는 중앙 링 (VIN 의 LP 몸과 구별)
-    this.label = mesh(circle(0.125, 28), basic('#ffffff', { map: noteTexture('#ffb347'), toneMapped: false, depthWrite: true }), { r: [-Math.PI / 2, 0, 0], p: [0, 0.143, 0], cast: false });
+    // 낮고 작은 LP 퍽 (윗면 = 레코드 홈)
+    this.body.add(mesh(cyl(0.29, 0.31, 0.1, 40), [vinyl, groove, vinyl], { p: [0, 0.06, 0] }));
+    // 퍽 테두리 = 주인 색 (위에서 봐도 누구 폭탄인지)
+    this.rim = mesh(torus(0.3, 0.028, 8, 40), basic(color, { toneMapped: false }), { r: [Math.PI / 2, 0, 0], p: [0, 0.1, 0], cast: false });
+    this.body.add(this.rim);
+    // 가운데 큰 음표 라벨 + 빛나는 중앙 링
+    this.label = mesh(circle(0.19, 32), basic('#ffffff', { map: noteTexture('#ffb347'), toneMapped: false, depthWrite: true }), { r: [-Math.PI / 2, 0, 0], p: [0, 0.113, 0], cast: false });
     this.body.add(this.label);
-    this.centerRing = mesh(torus(0.14, 0.014, 8, 36), basic('#ffb347', { additive: true, opacity: 0.9, toneMapped: false }), { r: [Math.PI / 2, 0, 0], p: [0, 0.145, 0], cast: false });
+    this.centerRing = mesh(torus(0.2, 0.016, 8, 36), basic('#ffb347', { additive: true, opacity: 0.9, toneMapped: false }), { r: [Math.PI / 2, 0, 0], p: [0, 0.115, 0], cast: false });
     this.body.add(this.centerRing);
     // Beat 2: 홈을 따라 안쪽으로 감겨 들어가는 파란 빛
-    this.grooveLight = mesh(torus(1, 0.012, 6, 48), basic('#4fb8ff', { additive: true, opacity: 0, toneMapped: false }), { r: [Math.PI / 2, 0, 0], p: [0, 0.146, 0], cast: false });
+    this.grooveLight = mesh(torus(1, 0.012, 6, 48), basic('#4fb8ff', { additive: true, opacity: 0, toneMapped: false }), { r: [Math.PI / 2, 0, 0], p: [0, 0.116, 0], cast: false });
     this.body.add(this.grooveLight);
     const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: '#ffb347', transparent: true, opacity: 0.45, depthWrite: false, blending: THREE.AdditiveBlending }));
-    glow.scale.set(0.9, 0.9, 1);
-    glow.position.set(0, 0.3, 0);
+    glow.scale.set(0.8, 0.8, 1);
+    glow.position.set(0, 0.24, 0);
     this.glow = glow;
     this.body.add(glow);
     this.root.add(this.body);
+    // 바닥 빛 (주인 색) — 어두운 맵에서도 폭탄 자리가 먼저 보인다
+    this.floorGlow = mesh(circle(0.62, 32), basic(color, { map: glowTexture(), additive: true, opacity: 0.55, toneMapped: false }), { r: [-Math.PI / 2, 0, 0], p: [0, 0.01, 0], cast: false });
+    this.root.add(this.floorGlow);
     // Beat 1: 바닥으로 퍼지는 작은 펄스 링
-    this.pulse = mesh(ring(0.36, 0.41, 40), basic('#ffb347', { additive: true, opacity: 0, toneMapped: false }), { r: [-Math.PI / 2, 0, 0], p: [0, 0.015, 0], cast: false });
+    this.pulse = mesh(ring(0.33, 0.38, 40), basic('#ffb347', { additive: true, opacity: 0, toneMapped: false }), { r: [-Math.PI / 2, 0, 0], p: [0, 0.015, 0], cast: false });
     this.root.add(this.pulse);
-    this.floorRing = mesh(ring(0.42, 0.47, 40), basic(color, { opacity: 0.8, toneMapped: false }), { r: [-Math.PI / 2, 0, 0], p: [0, 0.012, 0], cast: false });
+    // 진한 주인 색 바깥 링
+    this.floorRing = mesh(ring(0.38, 0.47, 40), basic(color, { opacity: 1, toneMapped: false }), { r: [-Math.PI / 2, 0, 0], p: [0, 0.012, 0], cast: false });
     this.root.add(this.floorRing);
-    this.fuseArc = mesh(ring(0.47, 0.51, 40), basic('#ffd166', { opacity: 0.75, toneMapped: false }), { r: [-Math.PI / 2, 0, 0], p: [0, 0.013, 0], cast: false });
+    this.fuseArc = mesh(ring(0.47, 0.51, 40), basic('#ffd166', { opacity: 0.8, toneMapped: false }), { r: [-Math.PI / 2, 0, 0], p: [0, 0.013, 0], cast: false });
     this.root.add(this.fuseArc);
     this.lastFrac = -1;
     this.lastBeat = -1;
@@ -331,10 +363,14 @@ export class BombView {
       this.glow.material.opacity = 0.7 + k;
       this.glow.scale.setScalar(0.9 + k * 1.2);
     } else {
-      this.body.scale.setScalar(s * (1 + beat * (stage === 3 ? 0.1 : 0.05)));
+      // 항상 은은하게 박동 (멈춰 있는 물체처럼 보이지 않게)
+      const idle = Math.sin(this.t * 6.5) * 0.025;
+      this.body.scale.setScalar(s * (1 + idle + beat * (stage === 3 ? 0.1 : 0.06)));
       this.glow.material.opacity = 0.25 + beat * 0.35 + heat * 0.5;
-      this.glow.scale.setScalar(0.8 + heat * 0.6);
+      this.glow.scale.setScalar(0.7 + heat * 0.6);
     }
+    this.floorGlow.material.opacity = 0.4 + beat * 0.25 + heat * 0.3;
+    this.floorGlow.scale.setScalar(1 + beat * 0.12);
     this.body.position.y = stage === 3 ? beat * 0.05 : 0;
     this.body.rotation.y += dt * (1.5 + progress * 9);
 
@@ -346,11 +382,12 @@ export class BombView {
     this.floorRing.visible = pos.y < 0.05;
     this.fuseArc.visible = pos.y < 0.05;
     this.pulse.visible = pos.y < 0.05;
+    this.floorGlow.visible = pos.y < 0.05;
   }
 
   dispose() {
     this.root.removeFromParent();
-    for (const m of [this.label, this.centerRing, this.grooveLight, this.pulse, this.floorRing, this.fuseArc]) m.material.dispose();
+    for (const m of [this.label, this.centerRing, this.grooveLight, this.pulse, this.floorRing, this.fuseArc, this.rim, this.floorGlow]) m.material.dispose();
     this.glow.material.dispose();
   }
 }

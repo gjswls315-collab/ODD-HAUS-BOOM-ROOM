@@ -52,6 +52,8 @@ export class PlayerController {
 
     this.activeBombs = 0;
     this.score = 0;
+    this.bonus = 0; // MAX BONUS (MAX 능력치 아이템을 먹은 횟수만큼)
+    this.maxPickups = 0;
     this.eliminatedAt = null;
   }
 

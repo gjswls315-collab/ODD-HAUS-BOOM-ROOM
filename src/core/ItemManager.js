@@ -1,12 +1,12 @@
 import { GAME_CONFIG } from '../config/gameConfig.js';
-import { ITEM_TYPES, RANDOM_BOX_POOL } from '../config/itemConfig.js';
+import { ITEM_TYPES, RANDOM_BOX_POOL, MAX_STAT_REWARD, SPECIAL_POOL } from '../config/itemConfig.js';
 import { DIRS } from './constants.js';
 
 // ─────────────────────────────────────────────────────────────
 // ItemManager — 공통 아이템 시스템
 //   - BREAKABLE 파괴 시 드랍 테이블(config)로 드랍
 //   - 자동 획득
-//   - stat 아이템 → CharacterStats.increase (캐릭터 max 를 넘지 않음)
+//   - stat 아이템 → CharacterStats.increase (캐릭터 max 를 넘지 않음) · 이미 MAX 면 MAX BONUS (+3번째마다 특수 아이템)
 //   - ability 아이템 → 그 판 동안 유지 (KICK / GLOVE / REMOTE)
 //   - held 아이템 → 소모형 1칸 (SHIELD 자동 / NEEDLE / ROLLER SKATES), E 키 (누구나 동일)
 // ─────────────────────────────────────────────────────────────
@@ -73,7 +73,12 @@ export class ItemManager {
   apply(player, type, item = null) {
     const def = ITEM_TYPES[type];
     if (def.kind === 'stat') {
+      const wasMax = player.stats.isMaxed(def.stat);
       const gained = player.stats.increase(def.stat, def.amount);
+      if (wasMax) {
+        this._maxReward(player, type, item);
+        return;
+      }
       this.gm.emit('itemPicked', {
         playerId: player.id,
         itemType: type,
@@ -100,6 +105,28 @@ export class ItemManager {
     if (def.kind === 'random') {
       const resolved = this.gm.rng.weighted(RANDOM_BOX_POOL);
       this.gm.emit('randomBox', { playerId: player.id, resolved });
+      this.apply(player, resolved, item);
+    }
+  }
+
+  // MAX 능력치 아이템 → MAX BONUS +1, specialEvery 번째마다 무작위 특수 아이템
+  _maxReward(player, type, item) {
+    const R = MAX_STAT_REWARD;
+    player.maxPickups = (player.maxPickups || 0) + 1;
+    player.bonus = (player.bonus || 0) + R.bonus;
+    const convert = player.maxPickups % R.specialEvery === 0;
+    this.gm.emit('itemPicked', { playerId: player.id, itemType: type, itemId: item?.id, stat: ITEM_TYPES[type].stat, gained: 0, maxed: true, maxBonus: R.bonus, maxCount: player.maxPickups, converts: convert });
+    if (convert) {
+      // 이미 가진 능력은 빼고 고른다 (전부 가졌으면 SHIELD)
+      const pool = {};
+      for (const [k, w] of Object.entries(SPECIAL_POOL)) {
+        const d = ITEM_TYPES[k];
+        if (d.kind === 'ability' && player.abilities[k]) continue;
+        if (d.kind === 'held' && player.heldItem?.type === k) continue;
+        pool[k] = w;
+      }
+      const resolved = Object.keys(pool).length ? this.gm.rng.weighted(pool) : 'shield';
+      this.gm.emit('maxSpecial', { playerId: player.id, resolved });
       this.apply(player, resolved, item);
     }
   }

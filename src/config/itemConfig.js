@@ -106,6 +106,19 @@ export const RANDOM_BOX_POOL = {
   kick: 1,
 };
 
+// 이미 MAX 인 능력치 아이템을 먹었을 때의 보상 (헛걸음이 되지 않게)
+//   매번 MAX BONUS +bonus 점 (결과 화면 표시 · 시간 종료 시 점수가 같으면 우선)
+//   specialEvery 번째마다 무작위 특수 아이템으로 바뀐다 (SPECIAL_POOL)
+export const MAX_STAT_REWARD = { bonus: 1, specialEvery: 3 };
+export const SPECIAL_POOL = {
+  kick: 1,
+  glove: 1,
+  remote: 1,
+  shield: 1.2,
+  needle: 1,
+  rollerSkates: 1,
+};
+
 // BREAKABLE 오브젝트 파괴 시 드랍 테이블
 // 권장 초기 비율: Speed 30% · Bomb 30% · Wave 30% · Special 10%
 // 시작 BREAKABLE 약 77~97개 (맵 + 시작 보충) × 드랍 44~55% → 한 판 아이템 약 42개

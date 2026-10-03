@@ -529,9 +529,13 @@ export class UIManager {
 
   // ── MINIMAP (선택) — 큰 맵에서 화면 밖 상황 확인. N 키 / 터치: 타이머 탭 ──
   _minimap(node, gm) {
-    let on = false; // 고정 카메라로 아레나 전체가 보이므로 기본은 꺼둔다 (N 키 / 타이머 탭으로 켜기)
+    // 17×15 이하: 고정 카메라로 아레나 전체가 보이므로 기본 꺼짐
+    // 그보다 큰 맵(TERRACE · LOCKED ROOM): 카메라가 따라가며 일부가 화면 밖 → 기본 켜짐 (설정은 따로 기억)
+    const big = gm.grid.width > 17 || gm.grid.height > 15;
+    const key = big ? 'boomroom.minimapBig' : 'boomroom.minimap2';
+    let on = big;
     try {
-      const saved = localStorage.getItem('boomroom.minimap2');
+      const saved = localStorage.getItem(key);
       if (saved !== null) on = saved === '1';
     } catch {
       /* storage 차단 — 기본값 사용 */
@@ -545,7 +549,7 @@ export class UIManager {
     cv.style.height = `${gm.grid.height * cs}px`;
     cv.classList.toggle('off', !on);
     node.appendChild(cv);
-    this.hud.minimap = { cv, ctx: cv.getContext('2d'), cs: cs * dpr, on, frame: 0 };
+    this.hud.minimap = { cv, ctx: cv.getContext('2d'), cs: cs * dpr, on, frame: 0, key };
     this.hud.timer.addEventListener('pointerdown', () => this.toggleMinimap());
     this.hud.timer.style.pointerEvents = 'auto';
   }
@@ -556,7 +560,7 @@ export class UIManager {
     mm.on = !mm.on;
     mm.cv.classList.toggle('off', !mm.on);
     try {
-      localStorage.setItem('boomroom.minimap2', mm.on ? '1' : '0');
+      localStorage.setItem(mm.key, mm.on ? '1' : '0');
     } catch {
       /* 무시 */
     }
@@ -708,12 +712,12 @@ export class UIManager {
       const ea = a.eliminatedAt ?? Infinity;
       const eb = b.eliminatedAt ?? Infinity;
       if (ea !== eb) return eb - ea;
-      return b.score - a.score;
+      return b.score - a.score || (b.bonus || 0) - (a.bonus || 0);
     });
     const rows = order
       .map((p, i) => {
         const s = stats[p.id] || {};
-        return `<tr><td>${i + 1}</td><td><span class="key" style="background:${p.color};color:#000">${p.isBot ? 'CPU' : `${p.slot + 1}P`}</span> ${p.name}</td><td>${p.team ? GAME_CONFIG.teamNames[p.team] : '—'}</td><td>${p.score}</td><td>${s.bombs || 0}</td><td>${s.items || 0}</td><td>${p.stats.current.speed}/${p.stats.max.speed}</td><td>${p.stats.current.bomb}/${p.stats.max.bomb}</td><td>${p.stats.current.wave}/${p.stats.max.wave}</td></tr>`;
+        return `<tr><td>${i + 1}</td><td><span class="key" style="background:${p.color};color:#000">${p.isBot ? 'CPU' : `${p.slot + 1}P`}</span> ${p.name}</td><td>${p.team ? GAME_CONFIG.teamNames[p.team] : '—'}</td><td>${p.score}${p.bonus ? ` <small title="MAX BONUS">+${p.bonus}</small>` : ''}</td><td>${s.bombs || 0}</td><td>${s.items || 0}</td><td>${p.stats.current.speed}/${p.stats.max.speed}</td><td>${p.stats.current.bomb}/${p.stats.max.bomb}</td><td>${p.stats.current.wave}/${p.stats.max.wave}</td></tr>`;
       })
       .join('');
     const node = this._layer(

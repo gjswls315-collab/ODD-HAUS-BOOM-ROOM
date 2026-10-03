@@ -1,7 +1,20 @@
 # Character GLB 위치
 
 최종 캐릭터 모델을 아래 경로에 넣으면 게임이 자동으로 GLB를 사용합니다.
-파일이 없으면 3D Placeholder(절차적 모델)를 사용합니다. 2D Sprite로 대체하지 않습니다.
+파일이 없으면 3D Placeholder(절차적 모델)를 사용합니다 — Placeholder 는 최종 모델이 아닙니다. 2D Sprite로 대체하지 않습니다.
+
+## 제작 우선순위
+
+1. VIN — 대표 캐릭터. 바닥의 Beat Bomb(납작한 LP 퍽)과 헷갈리지 않게 **큰 하얀 눈 + 빨간 신발**이 먼저 읽혀야 함
+2. PICKER
+3. BUDDY
+4. A.A.
+5. LOCKE
+6. REX
+7. BULLY
+8. MR. ODD (House Event 전용, 플레이 불가)
+
+GLB 가 들어와도 판정 · 충돌 · 능력치(SPEED/BOMB/WAVE)는 바뀌지 않습니다 (공통 PlayerController + 논리 그리드).
 
 | 캐릭터 | 경로 |
 | --- | --- |
