@@ -89,9 +89,50 @@ export function pickRandomSpawns(grid, rng, count, { minDist } = {}) {
   }
 
   // 각 시작 위치의 L자 여유 칸에 있는 상자를 치운다 (드랍 없음)
-  for (const s of chosen) {
+  //   clear = 이 시작 위치에서 비워 둔 칸 (아래 fillBreakables 가 다시 채우지 않음)
+  return chosen.map((s) => {
     const cells = s.ls[Math.floor(rng.next() * s.ls.length)];
     for (const [x, y] of cells) if (grid.get(x, y).type === CELL.BREAKABLE) grid.destroyBreakable(x, y);
+    return { x: s.x, y: s.y, clear: cells.map(([x, y]) => ({ x, y })) };
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+// 시작 상태 BREAKABLE 보충 — 초반 "박스 부수기 → 아이템 → 성장" 루프 강화
+//   빈 칸 중 density 비율을 스테이지 소품(BREAKABLE)으로 채운다 (시작 칸 + L자 여유 칸 제외)
+//   각 시작 위치에서 2~4칸 거리에는 최소 nearSpawn 개의 상자가 있도록 보장
+//   판정은 모두 공통 BREAKABLE, 비주얼만 stage.breakables 에서 고른다
+// ─────────────────────────────────────────────────────────────
+export function fillBreakables(grid, rng, spawns, { density = 0.35, nearSpawn = 6 } = {}, props = ['box']) {
+  const W = grid.width;
+  const key = (x, y) => y * W + x;
+  const keep = new Set();
+  for (const s of spawns) {
+    keep.add(key(s.x, s.y));
+    for (const c of s.clear || []) keep.add(key(c.x, c.y));
   }
-  return chosen.map((s) => ({ x: s.x, y: s.y }));
+  const fillable = (c) => c.type === CELL.EMPTY && !c.border && !c.gimmick && !keep.has(key(c.x, c.y));
+  const put = (c) => grid.setBreakable(c.x, c.y, props[Math.floor(rng.next() * props.length)], true);
+  let added = 0;
+  for (const c of grid.cells) {
+    if (fillable(c) && rng.next() < density) {
+      put(c);
+      added++;
+    }
+  }
+  for (const s of spawns) {
+    const band = grid.cells.filter((c) => {
+      const d = Math.abs(c.x - s.x) + Math.abs(c.y - s.y);
+      return d >= 2 && d <= 4;
+    });
+    let have = band.filter((c) => c.type === CELL.BREAKABLE).length;
+    const free = rng.shuffle(band.filter(fillable));
+    while (have < nearSpawn && free.length) {
+      put(free.pop());
+      have++;
+      added++;
+    }
+  }
+  grid.version = 0;
+  return added;
 }

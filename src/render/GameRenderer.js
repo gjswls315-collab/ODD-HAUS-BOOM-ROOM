@@ -4,6 +4,7 @@ import { PlayerView, BombView, WaveView, ItemView, TelegraphView, RollingLpView,
 import { Fx } from './Fx.js';
 import { damp } from './kit.js';
 import { ITEM_TYPES } from '../config/itemConfig.js';
+import { GAME_CONFIG } from '../config/gameConfig.js';
 
 // ─────────────────────────────────────────────────────────────
 // GameRenderer — 실제 3D Quarter-view (PerspectiveCamera, 약 50° 하향)
@@ -14,11 +15,12 @@ import { ITEM_TYPES } from '../config/itemConfig.js';
 const PITCH = THREE.MathUtils.degToRad(50);
 const FOV = 34;
 
-// v4 카메라: Soft Follow + Dynamic Zoom
-//   살아 있는 플레이어 "모두"를 담도록 부드럽게 따라가고, 서로 가까워지면 조금 확대 / 멀어지면 축소
-//   (시작할 때 1P 쪽으로 확대하지 않는다 — 사람 플레이어는 항상 화면 안에 들어오도록 중심만 보정)
-//   최대 축소 제한이 있어 큰 맵은 일부가 화면 밖으로 나갈 수 있다
+// 카메라: 경기 중에는 아레나 전체를 보여주는 고정 시점 (따라가기 / 확대 / 흔들림 없음).
+//   follow = true 로 바꾸면 플레이어를 따라가는 Soft Follow + Dynamic Zoom 이 다시 켜진다 (기본 꺼짐).
+//   경기 종료 후 승리 연출에서만 승자 쪽으로 다가간다.
 export const CAMERA_CONFIG = {
+  follow: false,
+  shake: 0.08, // 폭발 시 아주 약한 흔들림 (화면이 움직이는 느낌이 없도록)
   minView: [14, 10.5], // 가장 가까울 때 보이는 칸 수 (가로, 세로) — 너무 바짝 당기지 않는다
   maxView: [17.5, 15.5], // 가장 멀 때 — 17×15 맵은 전부 보이고, 이보다 큰 맵은 일부가 화면 밖
   margin: 2.6, // 플레이어 묶음 바깥 여유 칸
@@ -134,12 +136,13 @@ export class GameRenderer {
 
   toWorld = (x, y) => ({ x: x - (this.W - 1) / 2, z: y - (this.H - 1) / 2 });
 
-  setMatch(gm, { hudTopPx = 96, bottomPx = 0, dynamic = true } = {}) {
+  setMatch(gm, { hudTopPx = 96, bottomPx = 0, dynamic = CAMERA_CONFIG.follow, startArrows = true } = {}) {
     this.clearMatch();
     this.gm = gm;
     this.hudTopPx = hudTopPx;
     this.bottomPx = bottomPx;
     this.dynamicCamera = dynamic;
+    this.startArrows = startArrows;
     this.W = gm.grid.width;
     this.H = gm.grid.height;
     const th = gm.stageDef.theme;
@@ -410,6 +413,12 @@ export class GameRenderer {
           }
           this.shake(0.1);
           break;
+        case 'ampReact': {
+          const w = this.toWorld(e.x, e.y);
+          this.fx.ringPulse({ x: w.x, z: w.z }, '#ff3b4f', { to: 1.1 });
+          this.fx.sparkle({ x: w.x, y: 0.9, z: w.z }, '#ff8a9a', 10, { spread: 0.3, up: 1.2 });
+          break;
+        }
         case 'routeOpened':
           for (const c of e.cells) {
             const w = this.toWorld(c.x, c.y);
@@ -434,8 +443,12 @@ export class GameRenderer {
       this.stageView.update(dt, { beat, lightsOut, rec: rec ? rec.visual : null });
       if (this.stageView.recSign && rec) this.stageView.recSign.material.opacity = rec.state === 'rec' ? 0.7 + Math.sin(this.t * 8) * 0.3 : 0.25;
 
-      // 플레이어
-      for (const p of gm.players.list) this.playerViews.get(p.id)?.update(dt, p, this.t);
+      // 플레이어 (+ 경기 시작 위치 화살표: 카운트다운 동안 + 시작 후 잠깐)
+      const sa = GAME_CONFIG.startArrow;
+      const arrowAlpha = !this.startArrows ? 0 : gm.phase === 'COUNTDOWN' ? 1 : gm.phase === 'PLAYING' ? Math.max(0, Math.min(1, (sa.visibleAfterStart - gm.matchTime) / sa.fadeTime)) : 0;
+      // 화면에서 아레나가 작게 보일수록(휴대폰 세로 등) 화살표를 키운다
+      const arrowScale = Math.max(1, Math.min(1.8, (this.camBase.dist || 22) / 22));
+      for (const p of gm.players.list) this.playerViews.get(p.id)?.update(dt, p, this.t, { arrowAlpha, arrowScale });
       this._speedTrails(dt, gm);
 
       // 폭탄
@@ -584,10 +597,10 @@ export class GameRenderer {
     this.camTarget.lerp(target, 1 - Math.exp(-follow * dt));
     this.camDist = damp(this.camDist, dist, zoom, dt);
     this.trauma = Math.max(0, this.trauma - dt * 1.6);
-    const sh = this.trauma * this.trauma * 0.35;
+    const sh = this.trauma * this.trauma * CAMERA_CONFIG.shake;
     const t = this.t;
     const off = new THREE.Vector3(Math.sin(t * 47) * sh, Math.sin(t * 53 + 1) * sh, Math.sin(t * 41 + 2) * sh);
-    this._placeCamera(this.camTarget, this.camDist, Math.sin(t * 0.15) * 0.25);
+    this._placeCamera(this.camTarget, this.camDist, 0);
     this.camera.position.add(off);
 
     // 미니맵용 화면 영역 (칸 좌표)

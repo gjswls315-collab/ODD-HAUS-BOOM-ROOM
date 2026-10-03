@@ -4,7 +4,7 @@ import { getStage } from '../config/stageConfig.js';
 import { MATCH_PHASE } from './constants.js';
 import { Rng } from './rng.js';
 import { GridManager } from './GridManager.js';
-import { pickRandomSpawns } from './spawns.js';
+import { pickRandomSpawns, fillBreakables } from './spawns.js';
 import { PlayerManager } from './PlayerManager.js';
 import { BeatBombManager } from './BeatBombManager.js';
 import { SoundWaveManager } from './SoundWaveManager.js';
@@ -23,6 +23,7 @@ import { createModeRules } from './modes.js';
 //   players: [{ slot, characterId, team?, bot? }],
 //   seed?, timeLimit?, dropTable?, skipCountdown?, houseEvents?: false,
 //   spawn?: 'fixed' | 'random'  (random = 매 경기 다른 시작 위치, 기본 fixed — 테스트 결정성)
+//   startFill?: bool  (stage.startFill 비율로 시작 BREAKABLE 보충)
 //   stageDef? (테스트용 커스텀 스테이지)
 // }
 // ─────────────────────────────────────────────────────────────
@@ -46,6 +47,10 @@ export class GameManager {
       const spawns = pickRandomSpawns(this.grid, this.rng, Math.max(4, setup.players.length));
       if (spawns) this.grid.spawns = spawns;
       this.grid.version = 0;
+    }
+    // 시작 상태 BREAKABLE 보충 (stage.startFill) — App 의 실제 경기에서 사용, 테스트 기본값은 꺼짐
+    if (setup.startFill && this.stageDef.startFill) {
+      fillBreakables(this.grid, this.rng, this.grid.spawns.filter(Boolean), this.stageDef.startFill, this.stageDef.breakables || ['box']);
     }
     this.players = new PlayerManager(this, setup.players);
     this.bombs = new BeatBombManager(this);

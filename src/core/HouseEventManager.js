@@ -44,7 +44,7 @@ export class HouseEventManager {
     } else if (this.phase === 'act' && this.t >= 1.4) {
       this.phase = 'idle';
       this.current = null;
-      this.nextAt = gm.matchTime + gm.tempoInterval(this.cfg.interval);
+      this.nextAt = gm.matchTime + (this.cfg.lateScale === false ? this.cfg.interval : gm.tempoInterval(this.cfg.interval));
     }
   }
 

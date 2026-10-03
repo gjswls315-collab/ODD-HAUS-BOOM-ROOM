@@ -71,8 +71,11 @@ export const GAME_CONFIG = {
     spawnProtect: 0.6, // 드랍 직후 같은 Wave 에 파괴되지 않는 시간
   },
 
-  // 플레이어 색 (HUD / 바닥 링 / 폭탄 링)
-  playerColors: ['#ff5a4f', '#4fb8ff', '#6ee3a3', '#ffc55c'],
+  // 플레이어 색 (HUD / 바닥 링 / 폭탄 링 / 시작 위치 화살표) — P1 빨강 · P2 파랑 · P3 노랑 · P4 흰색
+  playerColors: ['#ff4a3d', '#3d9bff', '#ffd23f', '#f4f4f4'],
+
+  // 경기 시작 위치 화살표 — 카운트다운 동안 + 시작 후 visibleAfterStart 초, 마지막 fadeTime 초에 사라짐
+  startArrow: { visibleAfterStart: 2.5, fadeTime: 0.6 },
   teamColors: { A: '#ff5a4f', B: '#4fb8ff' },
   teamNames: { A: 'RED', B: 'BLUE' },
 };

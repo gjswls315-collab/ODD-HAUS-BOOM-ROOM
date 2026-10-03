@@ -4,6 +4,8 @@ import { GridManager } from '../src/core/GridManager.js';
 import { Rng } from '../src/core/rng.js';
 import { run, placeAt, press, DT } from './helpers.js';
 import { GameManager } from '../src/core/GameManager.js';
+import { BotBrain } from '../src/core/ai/BotBrain.js';
+import { GAME_CONFIG } from '../src/config/gameConfig.js';
 
 // BOOM ROOM v4 — 큰 아레나 크기
 const V4_SIZES = {
@@ -135,13 +137,32 @@ describe('Stages (6 arenas, BOOM ROOM v4 big grids)', () => {
     });
   }
 
-  it('expected item count per match is about 30~40 (BREAKABLE × drop chance)', () => {
+  it('start state: extra stage boxes (about 40% of cells), boxes 2~4 cells from every spawn, ~40 items per match', () => {
+    const fourBots = ['vin', 'picker', 'rex', 'buddy'].map((c, i) => ({ slot: i, characterId: c, bot: true }));
     for (const id of Object.keys(STAGES)) {
-      const gm = game(id);
-      const n = gm.grid.cells.filter((c) => c.type === CELL.BREAKABLE).length;
-      const expected = n * gm.items.dropTable.dropChance;
-      expect(expected, id).toBeGreaterThanOrEqual(30);
-      expect(expected, id).toBeLessThanOrEqual(40);
+      const base = ratios(STAGES[id].map).breakables;
+      for (const seed of [1, 2, 3]) {
+        const gm = new GameManager({ mode: 'battle', stageId: id, players: fourBots, seed, skipCountdown: true, spawn: 'random', startFill: true });
+        const g = gm.grid;
+        const inner = (g.width - 2) * (g.height - 2);
+        const boxes = g.cells.filter((c) => c.type === CELL.BREAKABLE);
+        expect(boxes.length, id).toBeGreaterThan(base + 15);
+        expect(boxes.length / inner, id).toBeGreaterThanOrEqual(0.35);
+        // 판정은 공통 BREAKABLE, 비주얼은 스테이지 소품
+        for (const c of boxes) expect(STAGES[id].breakables, `${id} ${c.prop}`).toContain(c.prop);
+        const expected = boxes.length * gm.items.dropTable.dropChance;
+        expect(expected, id).toBeGreaterThanOrEqual(36);
+        expect(expected, id).toBeLessThanOrEqual(48);
+        for (const sp of g.spawns) {
+          const near = g.cells.filter((c) => {
+            const d = Math.abs(c.x - sp.x) + Math.abs(c.y - sp.y);
+            return d >= 2 && d <= 4 && c.type === CELL.BREAKABLE;
+          }).length;
+          expect(near, `${id} seed ${seed} boxes near ${sp.x},${sp.y}`).toBeGreaterThanOrEqual(5);
+          expect(g.isWalkable(sp.x, sp.y)).toBe(true);
+          for (const c of sp.clear) expect(g.isWalkable(c.x, c.y), `${id} escape room ${c.x},${c.y}`).toBe(true);
+        }
+      }
     }
   });
 
@@ -188,25 +209,28 @@ describe('Stages (6 arenas, BOOM ROOM v4 big grids)', () => {
   });
 });
 
-describe('Mr. ODD House Event (Lounge / Locked Room)', () => {
-  it('Lounge: MR. ODD pushes a sofa (logic grid changes, not a hero skill)', () => {
-    const gm = game('lounge', { seed: 5 });
-    const before = gm.grid.toAscii();
-    gm.house.forceStart('furniturePush');
-    expect(gm.events.some((e) => e.type === 'houseEvent' && e.phase === 'warn')).toBe(true);
-    run(gm, gm.stageDef.houseEvents.warnTime + 0.1, {});
-    expect(gm.events.some((e) => e.type === 'groupMoved')).toBe(true);
-    expect(gm.grid.toAscii()).not.toBe(before);
+describe('Mr. ODD House Event (Locked Room only)', () => {
+  it('MR. ODD only appears in LOCKED ROOM; it is a map event, never a playable character', () => {
+    for (const id of Object.keys(STAGES)) expect(!!STAGES[id].houseEvents, id).toBe(id === 'lockedRoom');
+    const gm = game('lockedRoom', { seed: 5 });
     expect(gm.players.list.some((p) => p.characterId === 'mrOdd')).toBe(false);
   });
 
-  it('House event is scheduled automatically at firstAt', () => {
-    const gm = game('lounge', { seed: 5 });
+  it('House event is scheduled automatically at firstAt, with a warning first', () => {
+    const gm = game('lockedRoom', { seed: 5 });
     run(gm, gm.stageDef.houseEvents.firstAt + 0.1, {});
-    expect(gm.house.phase).not.toBe('idle');
+    expect(gm.house.phase).toBe('warn');
+    expect(gm.events.some((e) => e.type === 'houseEvent' && e.phase === 'warn')).toBe(true);
   });
 
-  it('Locked Room: furniture moves change . ↔ # (two pieces at once)', () => {
+  it('Locked Room changes the layout only a few times per match (limited)', () => {
+    const h = STAGES.lockedRoom.houseEvents;
+    expect(h.pushCount).toBe(1);
+    const events = 1 + Math.floor((300 - h.firstAt) / h.interval);
+    expect(events).toBeLessThanOrEqual(4);
+  });
+
+  it('Locked Room: a furniture move changes . ↔ # (after a warning)', () => {
     const gm = game('lockedRoom', { seed: 8 });
     const before = gm.grid.toAscii();
     gm.house.forceStart('furniturePush');
@@ -222,55 +246,56 @@ describe('Mr. ODD House Event (Lounge / Locked Room)', () => {
     for (const p of gm.players.list) expect(gm.grid.isWalkable(p.cellX, p.cellY)).toBe(true);
   });
 
-  it('stages without Mr. ODD use their own stage events instead', () => {
-    for (const id of ['lpLibrary', 'studio', 'djBooth', 'terrace']) {
-      expect(STAGES[id].houseEvents).toBeNull();
-      expect(STAGES[id].gimmicks.length).toBeGreaterThan(0);
-    }
+  it('only the allowed gimmicks remain: Studio REC pulse, DJ center turntable + speaker drop, Terrace wind', () => {
+    const kinds = (id) => STAGES[id].gimmicks.map((g) => g.kind).sort();
+    expect(kinds('lounge')).toEqual([]);
+    expect(kinds('lpLibrary')).toEqual([]);
+    expect(kinds('studio')).toEqual(['gates', 'recPulse']);
+    expect(STAGES.studio.gimmicks.find((g) => g.kind === 'gates').toggle).toBe(false);
+    expect(kinds('djBooth')).toEqual(['speakerDrop', 'turntables']);
+    expect(kinds('terrace')).toEqual(['wind']);
+    expect(kinds('lockedRoom')).toEqual([]);
   });
 });
 
-describe('Stage gimmicks (shared by all characters)', () => {
-  it('LP LIBRARY: breaking a golden Record Box opens the hidden shelf route', () => {
-    const gm = game('lpLibrary', { a: 'rex' });
-    expect(gm.grid.get(8, 2).gimmick.kind).toBe('secretShelf');
-    expect(gm.grid.isSolid(8, 2)).toBe(true);
-    const rex = gm.players.get(0);
-    placeAt(gm, rex, 7, 3);
-    press(gm, 0, 'bomb');
-    placeAt(gm, rex, 3, 1);
-    run(gm, 3, {});
-    expect(gm.grid.get(7, 2).type).toBe(CELL.EMPTY);
-    expect(gm.grid.isSolid(8, 2)).toBe(false);
-    expect(gm.events.some((e) => e.type === 'routeOpened')).toBe(true);
-  });
+describe('Stable arenas (the map does not keep moving)', () => {
+  const fourBots = ['vin', 'picker', 'rex', 'buddy'].map((c, i) => ({ slot: i, characterId: c, bot: true }));
+  const solids = (g) =>
+    g.cells
+      .filter((c) => c.type === CELL.SOLID || (c.type === CELL.GIMMICK && c.gimmick?.solid))
+      .map((c) => `${c.x},${c.y}`)
+      .join(';');
 
-  it('LP LIBRARY: Rolling LP smashes boxes and pushes players out of the row', () => {
-    const gm = game('lpLibrary', { houseEvents: false });
-    const p = gm.players.get(0);
-    placeAt(gm, p, 1, 3);
-    const lp = gm.stage.get('rollingLp');
-    lp.cfg = { ...lp.cfg, lanes: [3] };
-    lp.nextAt = 0;
-    const boxesBefore = [4, 6, 10, 12].filter((x) => gm.grid.get(x, 3).type === CELL.BREAKABLE).length;
-    run(gm, 4.5, {});
-    expect(p.cellY).not.toBe(3);
-    const boxesAfter = [4, 6, 10, 12].filter((x) => gm.grid.get(x, 3).type === CELL.BREAKABLE).length;
-    expect(boxesAfter).toBeLessThan(boxesBefore);
-  });
+  for (const id of ['lounge', 'lpLibrary', 'studio', 'terrace']) {
+    it(`${id}: furniture / walls never move during a 2-minute CPU match`, () => {
+      const gm = new GameManager({ mode: 'battle', stageId: id, players: fourBots, seed: 4, skipCountdown: true, spawn: 'random', startFill: true, timeLimit: 120 });
+      const bots = gm.players.list.map((p) => new BotBrain(p.id, { seed: gm.seed }));
+      const before = solids(gm.grid);
+      let moved = 0;
+      for (let i = 0; i < 120 * 60 && !gm.result; i++) {
+        const it = {};
+        for (const b of bots) it[b.playerId] = b.update(gm, DT);
+        gm.step(DT, it);
+        for (const e of gm.drainEvents()) if (['groupMoved', 'gatesToggled', 'turntableRotated', 'routeOpened'].includes(e.type)) moved++;
+      }
+      expect(moved).toBe(0);
+      expect(solids(gm.grid)).toBe(before);
+    });
+  }
 
-  it('STUDIO: a Sound Wave touching a G machine flips wall ↔ path; REC fires Sound Pulses', () => {
+  it('STUDIO: a Sound Wave on an amp only lights it up — no wall ↔ path switch; REC still pulses', () => {
     const gm = game('studio', { a: 'vin' });
-    expect(gm.grid.isSolid(8, 1)).toBe(true); // 올라와 있는 장비
-    expect(gm.grid.isSolid(4, 7)).toBe(false); // 내려가 있는 장비
+    expect(gm.grid.isSolid(8, 1)).toBe(true);
+    expect(gm.grid.isSolid(4, 7)).toBe(false);
     const p = gm.players.get(0);
     placeAt(gm, p, 7, 1);
     press(gm, 0, 'bomb');
     placeAt(gm, p, 1, 3);
     run(gm, 3, {});
-    expect(gm.events.some((e) => e.type === 'gatesToggled')).toBe(true);
-    expect(gm.grid.isSolid(8, 1)).toBe(false);
-    expect(gm.grid.isSolid(4, 7)).toBe(true);
+    expect(gm.events.some((e) => e.type === 'ampReact')).toBe(true);
+    expect(gm.events.some((e) => e.type === 'gatesToggled')).toBe(false);
+    expect(gm.grid.isSolid(8, 1)).toBe(true);
+    expect(gm.grid.isSolid(4, 7)).toBe(false);
 
     const rec = gm.stage.get('recPulse');
     rec.nextAt = 0;
@@ -283,22 +308,24 @@ describe('Stage gimmicks (shared by all characters)', () => {
     expect(pulses).toBeGreaterThan(0);
   });
 
-  it('DJ BOOTH: 5 turntables; the ring (furniture included) rotates and changes the path', () => {
+  it('DJ BOOTH: only the center turntable rotates (every 16s, warned); the other 4 decks are fixed', () => {
     const gm = game('djBooth', { houseEvents: false });
     const tt = gm.stage.get('turntables');
-    expect(tt.decks.length).toBe(5);
-    const deck = tt.decks.find((d) => d.x === 4 && d.y === 4);
-    // ring: (3,3)# (4,3)B (5,3). (5,4). (5,5)# (4,5)B (3,5). (3,4)B
+    expect(tt.decks.length).toBe(1);
+    expect(tt.decks[0]).toMatchObject({ x: 8, y: 7 });
+    expect(tt.cfg.interval).toBeGreaterThanOrEqual(15);
+    const ring = tt.decks[0].ring;
+    const before = ring.map((c) => gm.grid.get(c.x, c.y).type).join();
+    let warned = false;
+    run(gm, tt.cfg.interval + 0.1, (g) => {
+      if (g.events.some((e) => e.type === 'turntableWarn')) warned = true;
+      return {};
+    });
+    expect(warned).toBe(true);
+    expect(ring.map((c) => gm.grid.get(c.x, c.y).type).join()).not.toBe(before);
+    // 바깥 턴테이블(4,4) 둘레는 그대로
     expect(gm.grid.get(5, 5).type).toBe(CELL.SOLID);
     expect(gm.grid.get(3, 4).type).toBe(CELL.BREAKABLE);
-    gm.items.spawn('bombUp', 5, 3);
-    tt.rotate(deck);
-    expect(gm.grid.get(4, 3).type).toBe(CELL.SOLID);
-    expect(gm.grid.get(5, 5).type).toBe(CELL.EMPTY);
-    expect(gm.grid.get(4, 5).type).toBe(CELL.SOLID);
-    expect(gm.grid.get(3, 4).type).toBe(CELL.EMPTY);
-    expect(gm.grid.get(3, 3).type).toBe(CELL.BREAKABLE);
-    expect(gm.items.items[0]).toMatchObject({ x: 5, y: 4 });
 
     const sd = gm.stage.get('speakerDrop');
     sd.nextAt = 0;
@@ -378,5 +405,22 @@ describe('Random start positions (every match starts somewhere different)', () =
   it('fixed spawns stay the default (tests / replays)', () => {
     const gm = new GameManager({ mode: 'battle', stageId: 'lounge', players: fourBots, seed: 1, skipCountdown: true });
     expect(gm.players.list.map((p) => [p.x, p.y]).sort()).toEqual([[1, 1], [1, 13], [15, 1], [15, 13]].sort());
+  });
+});
+
+describe('Match start player position indicator', () => {
+  it('arrows show during the countdown and ~2.5s after GO, in P1 red / P2 blue / P3 yellow / P4 white', () => {
+    const a = GAME_CONFIG.startArrow;
+    expect(a.visibleAfterStart).toBeGreaterThanOrEqual(2);
+    expect(a.visibleAfterStart).toBeLessThanOrEqual(3);
+    expect(a.fadeTime).toBeLessThan(a.visibleAfterStart);
+    const [p1, p2, p3, p4] = GAME_CONFIG.playerColors.map((h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)));
+    expect(p1[0]).toBeGreaterThan(200); // red
+    expect(p1[1]).toBeLessThan(120);
+    expect(p2[2]).toBeGreaterThan(200); // blue
+    expect(p2[0]).toBeLessThan(120);
+    expect(p3[0] + p3[1]).toBeGreaterThan(400); // yellow
+    expect(p3[2]).toBeLessThan(120);
+    expect(Math.min(...p4)).toBeGreaterThan(220); // white
   });
 });

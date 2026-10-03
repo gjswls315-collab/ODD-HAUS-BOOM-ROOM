@@ -24,8 +24,11 @@ export class Turntables {
 
   init() {
     const { grid } = this.gm;
+    // cfg.decks 가 있으면 그 턴테이블만 회전 (나머지는 고정 장식)
+    const only = this.cfg.decks ? new Set(this.cfg.decks.map(([x, y]) => `${x},${y}`)) : null;
     for (const c of grid.cells) {
       if (!(c.turntable || c.prop === 'turntable')) continue;
+      if (only && !only.has(`${c.x},${c.y}`)) continue;
       const ring = RING.map(([dx, dy]) => ({ x: c.x + dx, y: c.y + dy }));
       if (ring.every((p) => grid.inBounds(p.x, p.y) && !grid.get(p.x, p.y).border)) {
         this.decks.push({ x: c.x, y: c.y, ring, rotations: 0 });

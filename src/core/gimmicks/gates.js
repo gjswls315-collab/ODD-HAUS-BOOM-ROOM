@@ -59,9 +59,15 @@ export class Gates {
   }
 
   // 올라와 있는 장비는 Wave 를 막지만(그리드 판정), 그 장비에 Wave 가 "닿으면" 스위치가 작동한다
+  //   toggle: false → 지형은 그대로, 장비 불빛만 반응 (거의 고정형 STUDIO)
   onWaveTouch(x, y, source) {
     if (source === 'amp' || this.cooldown > 0) return; // 장비 자신의 Pulse 로는 전환되지 않음
     if (!this.gates.some((c) => c.x === x && c.y === y)) return;
+    if (this.cfg.toggle === false) {
+      this.cooldown = 0.4;
+      this.gm.emit('ampReact', { x, y });
+      return;
+    }
     this.cooldown = this.cfg.cooldown ?? 2.5;
     this.toggle(source);
   }

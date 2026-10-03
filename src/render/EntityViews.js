@@ -10,6 +10,76 @@ const DIR_ANGLE = { down: 0, right: Math.PI / 2, up: Math.PI, left: -Math.PI / 2
 // 납작한 캐릭터(LP·피크·열쇠)는 옆면만 보이지 않도록 좌우 회전을 줄여 얼굴이 카메라 쪽으로 보이게
 const SIDE_YAW = { vin: 0.85, picker: 0.95, locke: 1.05 };
 
+// ── 경기 시작 위치 화살표 (match start player position indicator) ─────────
+//   머리 위에 떠서 통통 튀는 굵고 둥근 아래 화살표. 검은 외곽선 + 하이라이트 + 은은한 빛 + 바닥 그림자.
+//   카운트다운 동안 + 시작 직후 잠깐만 보이고 사라진다 (상시 UI 아님).
+let arrowGeo = null;
+let arrowOutlineGeo = null;
+function startArrowShape() {
+  const s = new THREE.Shape();
+  s.moveTo(-0.15, 0.55);
+  s.quadraticCurveTo(-0.15, 0.68, -0.04, 0.68);
+  s.lineTo(0.04, 0.68);
+  s.quadraticCurveTo(0.15, 0.68, 0.15, 0.55);
+  s.lineTo(0.15, 0.25);
+  s.lineTo(0.29, 0.25);
+  s.quadraticCurveTo(0.41, 0.25, 0.33, 0.14);
+  s.lineTo(0.07, -0.17);
+  s.quadraticCurveTo(0, -0.25, -0.07, -0.17);
+  s.lineTo(-0.33, 0.14);
+  s.quadraticCurveTo(-0.41, 0.25, -0.29, 0.25);
+  s.lineTo(-0.15, 0.25);
+  s.closePath();
+  return s;
+}
+
+function buildStartArrow(color) {
+  if (!arrowGeo) {
+    const shape = startArrowShape();
+    arrowGeo = new THREE.ExtrudeGeometry(shape, { depth: 0.1, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.045, bevelSegments: 4, curveSegments: 10 });
+    arrowGeo.translate(0, 0, -0.05);
+    arrowOutlineGeo = new THREE.ExtrudeGeometry(shape, { depth: 0.04, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.12, bevelSegments: 3, curveSegments: 10 });
+    arrowOutlineGeo.translate(0, 0, -0.12);
+  }
+  const c = new THREE.Color(color);
+  const light = c.r + c.g + c.b > 2.4; // 흰색 화살표는 외곽선을 진하게
+  const mats = [];
+  const track = (m) => {
+    m.transparent = true;
+    mats.push({ m, base: m.opacity });
+    return m;
+  };
+  const g = group([], { name: 'StartArrow' });
+  const holder = group([], { p: [0, 1.95, 0] });
+  const tilt = group([], { r: [-0.87, 0, 0], s: 1.2 }); // 카메라(50° 하향) 쪽을 향하도록
+  // 조명 / 톤매핑 영향 없이 선명한 색 (앞면 = 플레이어 색, 옆면 = 조금 어둡게 → 통통한 입체감)
+  const face = track(new THREE.MeshBasicMaterial({ color: c, opacity: 1, toneMapped: false }));
+  const side = track(new THREE.MeshBasicMaterial({ color: c.clone().multiplyScalar(light ? 0.62 : 0.58), opacity: 1, toneMapped: false }));
+  tilt.add(mesh(arrowOutlineGeo, track(new THREE.MeshBasicMaterial({ color: '#0d0b10', opacity: 1, toneMapped: false })), { cast: false }));
+  tilt.add(mesh(arrowGeo, [face, side], { cast: false }));
+  // 아래쪽 그림자 띠 (앞면 아래 절반을 살짝 어둡게)
+  tilt.add(mesh(rbox(0.5, 0.12, 0.01, 0.04), track(basic(c.clone().multiplyScalar(0.7), { opacity: 0.55, toneMapped: false })), { p: [0, 0.02, 0.106], cast: false }));
+  // 반짝이는 하이라이트 (통통한 젤리 느낌)
+  tilt.add(mesh(rbox(0.07, 0.3, 0.02, 0.03), track(basic('#ffffff', { opacity: 0.85, toneMapped: false })), { p: [-0.07, 0.47, 0.11], cast: false }));
+  tilt.add(mesh(sphere(0.035, 10, 8), track(basic('#ffffff', { opacity: 0.9, toneMapped: false })), { p: [0.06, 0.6, 0.11], cast: false }));
+  // 양옆 반짝 선
+  for (const sx of [-1, 1]) {
+    tilt.add(mesh(rbox(0.05, 0.16, 0.02, 0.02), track(basic(light ? '#2a2a30' : color, { opacity: 0.9, toneMapped: false })), { p: [sx * 0.46, 0.5, 0], r: [0, 0, -sx * 0.6], cast: false, name: 'spark' }));
+  }
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: c, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending }));
+  glow.scale.set(1.5, 1.5, 1);
+  glow.position.set(0, 0.25, -0.1);
+  mats.push({ m: glow.material, base: 0.55 });
+  tilt.add(glow);
+  holder.add(tilt);
+  g.add(holder);
+  // 바닥 그림자 (화살표가 높이 뜰수록 작고 옅게)
+  const shadow = mesh(circle(0.34, 24), track(basic('#000000', { opacity: 0.32 })), { r: [-Math.PI / 2, 0, 0], p: [0, 0.02, 0], cast: false });
+  g.add(shadow);
+  g.renderOrder = 8;
+  return { group: g, holder, tilt, shadow, mats, sparks: tilt.children.filter((o) => o.name === 'spark') };
+}
+
 // ─────────────────────────────────────────────────────────────
 // PlayerView — PlayerRoot
 // ├── VisualModel (CharacterVisual: GLB 또는 3D Placeholder)
@@ -49,6 +119,10 @@ export class PlayerView {
     this.label.renderOrder = 9;
     this.root.add(this.label);
 
+    // 경기 시작 위치 화살표
+    this.startArrow = buildStartArrow(player.color);
+    this.root.add(this.startArrow.group);
+
     // Sound Capsule (Vinyl Bubble)
     this.capsule = group([], { name: 'SoundCapsule' });
     const bubbleMat = new THREE.MeshStandardMaterial({ color: color.clone().lerp(new THREE.Color('#b46bff'), 0.5), transparent: true, opacity: 0.32, roughness: 0.05, metalness: 0.3, emissive: '#6a3aff', emissiveIntensity: 0.35, depthWrite: false });
@@ -73,7 +147,25 @@ export class PlayerView {
     parent.add(this.root);
   }
 
-  update(dt, p, t) {
+  _updateStartArrow(alpha, t, scale = 1) {
+    const a = this.startArrow;
+    a.group.visible = alpha > 0.001;
+    if (!a.group.visible) return;
+    const bounce = Math.abs(Math.sin(t * 4.6));
+    a.holder.position.y = 1.75 + 0.2 * scale + bounce * 0.24 * scale;
+    // 바닥에 닿을 때 살짝 납작
+    const squash = 1 - Math.max(0, 0.25 - bounce) * 0.5;
+    a.holder.scale.set(1 / squash, squash, 1);
+    for (const sp of a.sparks) sp.scale.setScalar(0.6 + bounce * 0.6);
+    a.shadow.scale.setScalar(1.05 - bounce * 0.3);
+    const pop = easeOutBack(clamp01(this.arrowAge / 0.35));
+    a.tilt.scale.setScalar(1.2 * scale * Math.max(0.01, pop));
+    for (const { m, base } of a.mats) m.opacity = base * alpha * (m === a.shadow.material ? 1 - bounce * 0.4 : 1);
+  }
+
+  update(dt, p, t, { arrowAlpha = 0, arrowScale = 1 } = {}) {
+    this.arrowAge = (this.arrowAge || 0) + dt;
+    this._updateStartArrow(p.isEliminated ? 0 : arrowAlpha, t, arrowScale);
     const w = this.toWorld(p.x, p.y);
     if (!this.initialized) {
       this.pos.set(w.x, 0, w.z);

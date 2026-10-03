@@ -34,7 +34,7 @@ export const BOT_STATE = Object.freeze({
 const ST = BOT_STATE;
 
 export const BOT_CONFIG = {
-  stuckTime: 1.2, // 같은 칸에 이만큼 머물면 STUCK
+  stuckTime: 1.0, // 같은 칸에 이만큼(초) 머물면 STUCK → 경로 폐기 후 재탐색
   blockedTime: 0.45, // 이동 입력 중인데 좌표가 그대로면 경로가 막힌 것
   blacklistTime: 4, // STUCK 으로 버린 목표 칸은 잠시 다시 고르지 않는다
   bombEscapeMargin: 0.45, // 폭발 전 안전 칸 도착 여유 (초)
@@ -727,6 +727,12 @@ export class BotBrain {
       if (k !== here && field.cost[k] !== INF) this.path = this._pathTo(field, k);
     }
 
+    // 멈춰 서 있지 않기: 위험하지 않은데 0.5초 넘게 같은 칸이면 바로 다른 안전 칸으로 (STUCK CHECK 보다 먼저)
+    if (!this.path && !res.bomb && this.stuck.t > 0.5) {
+      this.blacklist.set(here, this.clock + 2);
+      this._wander(gm, p, danger, field);
+    }
+
     // 다음 칸이 곧 위험해지면 멈춤
     if (this.path) {
       const i = this.path.findIndex((c) => c.x === p.cellX && c.y === p.cellY);
@@ -858,7 +864,7 @@ export class BotBrain {
       const scarcity = 1 - Math.min(1, boxesLeft / this.initialBoxes);
       let chase = null;
       for (let k = 0; k < field.cost.length; k++) {
-        if (field.cost[k] === INF || danger[k] !== INF || this._blacklisted(k)) continue;
+        if (k === here || field.cost[k] === INF || danger[k] !== INF || this._blacklisted(k)) continue;
         const x = k % W;
         const y = (k - x) / W;
         for (const e of enemies) {

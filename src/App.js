@@ -119,8 +119,9 @@ export class App {
       seed: Math.floor(Math.random() * 1e6),
       skipCountdown: true,
       spawn: 'random',
+      startFill: true,
     });
-    this._setMatch(gm, { hudTopPx: 0, dynamic: false });
+    this._setMatch(gm, { hudTopPx: 0, dynamic: false, startArrows: false });
     this.attract = true;
   }
 
@@ -189,6 +190,7 @@ export class App {
       seed: seed ?? Math.floor(Math.random() * 1e9),
       skipCountdown,
       spawn: this.fixedSpawn ? 'fixed' : 'random', // 매 경기 다른 시작 위치 (?spawn=fixed 로 고정 — 테스트용)
+      startFill: !this.fixedSpawn, // 시작 BREAKABLE 보충
     };
     const gm = new GameManager(setup);
     this.attract = false;

@@ -52,7 +52,7 @@ export const STAGES = {
     name: 'LOUNGE',
     subtitle: '거실 배틀 · 기본형 / 학습',
     desc: '소파·커피테이블·사이드테이블이 SOLID, LP 박스·책 더미·잡지 박스·쿠션이 BREAKABLE. 소파 네 개가 중앙 Floor Lamp 를 둘러싼 대칭 거실.',
-    eventDesc: 'Mr. ODD 가 소파 하나를 밀어 통로 한 줄을 바꾼다.',
+    eventDesc: '고정형 맵 — 경기 중 지형이 바뀌지 않는다.',
     map: [
       '#################',
       '#S..B.B...B.B..S#',
@@ -81,14 +81,10 @@ export const STAGES = {
       borderAttached: 'bookcase',
     },
     legend: { G: { type: CELL.SOLID, prop: 'lamp', light: true } },
+    // 시작 상태 BREAKABLE 보충 (빈 칸 중 density 비율 + 시작 위치 2~4칸 안 최소 nearSpawn 개)
+    startFill: { density: 0.36, nearSpawn: 6 },
     gimmicks: [],
-    houseEvents: {
-      firstAt: 95,
-      interval: 55,
-      warnTime: 3.2,
-      events: ['furniturePush'],
-      pushCount: 1,
-    },
+    houseEvents: null,
     theme: {
       backdrop: 'lounge',
       border: 'room',
@@ -113,8 +109,8 @@ export const STAGES = {
     no: '02',
     name: 'LP LIBRARY',
     subtitle: 'LP 서재 배틀 · 미로형 / 좁은 통로',
-    desc: '긴 선반이 SOLID 미로를 만든다. 금색 Record Box 를 부수면 숨은 선반이 열려 위·아래 지름길이 생긴다. Bomb 배치를 실수하면 스스로 갇히기 쉽다.',
-    eventDesc: '대형 LP 가 예고 후 3·11행을 굴러가며 상자를 부수고 플레이어와 아이템을 밀어낸다.',
+    desc: '긴 선반이 SOLID 미로를 만든다. 통로가 좁아 Bomb 배치를 실수하면 스스로 갇히기 쉽다.',
+    eventDesc: '고정형 맵 — 경기 중 지형이 바뀌지 않는다.',
     map: [
       '#################',
       '#S..B.B.B.B.B..S#',
@@ -135,22 +131,10 @@ export const STAGES = {
     breakables: ['recordCrate', 'lpStack', 'cardboardBox'],
     solids: { merge: true, byLength: { default: 'shelf' }, borderAttached: 'shelf' },
     legend: { G: { type: CELL.SOLID, prop: 'recordPlayer' } },
-    overrides: [
-      { at: [7, 2], def: { type: CELL.BREAKABLE, prop: 'routeCrate', routeCrate: true } },
-      { at: [8, 2], def: { type: CELL.GIMMICK, prop: 'secretShelf', gimmick: 'secretShelf' } },
-      { at: [9, 12], def: { type: CELL.BREAKABLE, prop: 'routeCrate', routeCrate: true } },
-      { at: [8, 12], def: { type: CELL.GIMMICK, prop: 'secretShelf', gimmick: 'secretShelf' } },
-    ],
-    gimmicks: [
-      {
-        kind: 'routeCrates',
-        links: [
-          { crate: [7, 2], opens: [[8, 2]] },
-          { crate: [9, 12], opens: [[8, 12]] },
-        ],
-      },
-      { kind: 'rollingLp', lanes: [3, 11], firstAt: 40, interval: 30, warnTime: 2.4, speed: 10 },
-    ],
+    // 고정형 맵: 숨은 선반 / Rolling LP 같은 지형 변화 기믹 없음 (gimmicks/routeCrates·rollingLp 는 확장용으로 남겨 둠)
+    // 시작 상태 BREAKABLE 보충 (빈 칸 중 density 비율 + 시작 위치 2~4칸 안 최소 nearSpawn 개)
+    startFill: { density: 0.36, nearSpawn: 6 },
+    gimmicks: [],
     houseEvents: null,
     theme: {
       backdrop: 'library',
@@ -175,8 +159,8 @@ export const STAGES = {
     no: '03',
     name: 'STUDIO',
     subtitle: '녹음실 배틀 · 기계형 / 스위치',
-    desc: 'G 장비(Amp)가 공용 스위치로 연결된다. 아무 Sound Wave 나 G 에 닿으면 위·아래 장비가 내려가고 좌·우 장비가 올라오며 통로 ↔ 벽이 전환된다.',
-    eventDesc: 'REC 표시 후 올라와 있는 장비 라인에 Sound Pulse 발생. 모두 똑같이 피해야 한다.',
+    desc: '거의 고정형. G 장비(Amp)는 위·아래 2대가 서 있고 좌·우 2대는 바닥에 내려가 있다 (지형 변화 없음). Sound Wave 가 닿으면 장비 불빛만 반응한다.',
+    eventDesc: 'REC 표시 후 서 있는 장비 라인에 Sound Pulse 발생. 모두 똑같이 피해야 한다.',
     map: [
       '#################',
       '#S..B.B.G.B.B..S#',
@@ -201,8 +185,10 @@ export const STAGES = {
       borderAttached: 'speaker',
     },
     legend: { G: { type: CELL.GIMMICK, prop: 'ampGate', gimmick: 'gate' } },
+    // 시작 상태 BREAKABLE 보충 (빈 칸 중 density 비율 + 시작 위치 2~4칸 안 최소 nearSpawn 개)
+    startFill: { density: 0.36, nearSpawn: 6 },
     gimmicks: [
-      { kind: 'gates', closed: [[8, 1], [8, 13]], open: [[4, 7], [12, 7]], cooldown: 2.5 },
+      { kind: 'gates', closed: [[8, 1], [8, 13]], open: [[4, 7], [12, 7]], cooldown: 2.5, toggle: false },
       { kind: 'recPulse', firstAt: 30, interval: 28, warnTime: 1.8, range: 4 },
     ],
     houseEvents: null,
@@ -225,7 +211,7 @@ export const STAGES = {
     no: '04',
     name: 'DJ BOOTH',
     subtitle: 'DJ 부스 배틀 · 리듬형 / 변형',
-    desc: 'G 는 Turntable Zone (5개). 일정 박자마다 턴테이블 둘레 8칸(가구·상자·아이템·폭탄)이 시계 방향으로 회전해 길 구조가 바뀐다.',
+    desc: 'G 는 턴테이블 5대. 그중 중앙 턴테이블만 예고 후 16초마다 둘레 8칸이 한 칸 회전한다 (나머지는 고정 장식).',
     eventDesc: 'Speaker Drop 예고 후 짧은 시간 Beat Bomb 카운트가 빨라진다.',
     map: [
       '#################',
@@ -248,8 +234,10 @@ export const STAGES = {
     // 턴테이블이 칸 단위로 회전시키므로 # 를 한 덩어리로 묶지 않는다
     solids: { merge: false, byLength: { 1: ['speaker', 'vinylShelf', 'speaker', 'vinylShelf', 'speaker'] } },
     legend: { G: { type: CELL.SOLID, prop: 'turntable', turntable: true } },
+    // 시작 상태 BREAKABLE 보충 (빈 칸 중 density 비율 + 시작 위치 2~4칸 안 최소 nearSpawn 개)
+    startFill: { density: 0.36, nearSpawn: 6 },
     gimmicks: [
-      { kind: 'turntables', interval: 8, warnTime: 1.2 },
+      { kind: 'turntables', interval: 16, warnTime: 2.0, decks: [[8, 7]] },
       { kind: 'speakerDrop', firstAt: 60, interval: 50, duration: 9, warnTime: 2, fuseMultiplier: 0.6 },
     ],
     houseEvents: null,
@@ -294,9 +282,11 @@ export const STAGES = {
     breakables: ['flowerPot', 'gardenBox', 'foldingChair'],
     solids: { merge: true, byLength: { 4: ['planterBed', 'patioSet'], 1: ['planter', 'patioTable'], default: 'planterBed' }, borderAttached: 'planter' },
     legend: { G: { type: CELL.SOLID, prop: 'windFan' } },
+    // 시작 상태 BREAKABLE 보충 (빈 칸 중 density 비율 + 시작 위치 2~4칸 안 최소 nearSpawn 개)
+    startFill: { density: 0.3, nearSpawn: 6 },
     gimmicks: [{ kind: 'wind', firstAt: 30, interval: 25, warnTime: 3 }],
     houseEvents: null,
-    dropChance: 0.6,
+    dropChance: 0.48,
     theme: {
       backdrop: 'terrace',
       border: 'terrace',
@@ -317,7 +307,7 @@ export const STAGES = {
     name: 'LOCKED ROOM',
     subtitle: '잠긴 방 배틀 · 고난도 / 구조 변경',
     desc: '넓지만 오래된 가구가 빽빽해 실제 동선은 좁다. 중앙 GGG 는 Old Audio Machine. Mr. ODD 가 가구를 옮겨 후반 동선이 크게 바뀐다.',
-    eventDesc: 'Mr. ODD 가 가구를 이동시켜 일부 . ↔ # 상태를 바꾸고, 불을 끄거나 상자를 떨어뜨린다.',
+    eventDesc: 'Mr. ODD 이벤트(경고 후)에서만 가구 1개 이동 · 암전 · 상자 낙하. 그 외에는 지형이 바뀌지 않는다.',
     map: [
       '###################',
       '#S..B#.B...B.#B..S#',
@@ -347,17 +337,20 @@ export const STAGES = {
       borderAttached: 'wardrobe',
     },
     legend: { G: { type: CELL.SOLID, prop: 'oldAudio' } },
+    // 시작 상태 BREAKABLE 보충 (빈 칸 중 density 비율 + 시작 위치 2~4칸 안 최소 nearSpawn 개)
+    startFill: { density: 0.3, nearSpawn: 6 },
     gimmicks: [],
     houseEvents: {
-      firstAt: 70,
-      interval: 45,
+      firstAt: 90,
+      interval: 70,
       warnTime: 3.0,
       events: ['furniturePush', 'lampOff', 'blockSpawn'],
-      pushCount: 2,
-      blockCount: 5,
+      pushCount: 1,
+      blockCount: 4,
       lampOffDuration: 6,
+      lateScale: false, // 후반에도 간격을 줄이지 않는다
     },
-    dropChance: 0.56,
+    dropChance: 0.44,
     theme: {
       backdrop: 'lockedroom',
       border: 'room',

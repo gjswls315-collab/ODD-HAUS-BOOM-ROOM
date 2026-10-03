@@ -7,7 +7,7 @@ import { makeGame, placeAt, OPEN_MAP, DT } from './helpers.js';
 describe('CPU (v4): state machine, needs-based items, safe bombs, stuck recovery', () => {
   it('uses the v4 state names', () => {
     expect(Object.keys(BOT_STATE)).toEqual(expect.arrayContaining(['SCAN', 'ITEM_SEEK', 'ATTACK', 'ESCAPE', 'POSITIONING']));
-    expect(BOT_CONFIG.stuckTime).toBe(1.2);
+    expect(BOT_CONFIG.stuckTime).toBeLessThanOrEqual(1.0);
   });
 
   it('needs-based item priority: SPEED 2/5 · BOMB 3/3 · WAVE 1/4 → WAVE UP > SPEED UP > special > (ignore BOMB UP)', () => {

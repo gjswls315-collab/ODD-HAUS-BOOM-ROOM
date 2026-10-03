@@ -531,9 +531,9 @@ export class UIManager {
 
   // ── MINIMAP (선택) — 큰 맵에서 화면 밖 상황 확인. N 키 / 터치: 타이머 탭 ──
   _minimap(node, gm) {
-    let on = !(window.innerWidth <= 700);
+    let on = false; // 고정 카메라로 아레나 전체가 보이므로 기본은 꺼둔다 (N 키 / 타이머 탭으로 켜기)
     try {
-      const saved = localStorage.getItem('boomroom.minimap');
+      const saved = localStorage.getItem('boomroom.minimap2');
       if (saved !== null) on = saved === '1';
     } catch {
       /* storage 차단 — 기본값 사용 */
@@ -558,7 +558,7 @@ export class UIManager {
     mm.on = !mm.on;
     mm.cv.classList.toggle('off', !mm.on);
     try {
-      localStorage.setItem('boomroom.minimap', mm.on ? '1' : '0');
+      localStorage.setItem('boomroom.minimap2', mm.on ? '1' : '0');
     } catch {
       /* 무시 */
     }
@@ -760,7 +760,6 @@ export function drawMinimap(canvas, stage) {
   const cw = canvas.width / W;
   const ch = canvas.height / H;
   const legend = legendFor(stage);
-  let spawnNo = 0;
   g.fillStyle = stage.theme.floor.a;
   g.fillRect(0, 0, canvas.width, canvas.height);
   for (let y = 0; y < H; y++) {
@@ -780,13 +779,7 @@ export function drawMinimap(canvas, stage) {
         g.fillStyle = col;
         g.fillRect(x * cw + 0.5, y * ch + 0.5, cw - 1, ch - 1);
       }
-      if (d.spawn !== undefined) {
-        const si = d.spawn === 'auto' ? spawnNo++ : d.spawn;
-        g.fillStyle = GAME_CONFIG.playerColors[si % 4];
-        g.beginPath();
-        g.arc((x + 0.5) * cw, (y + 0.5) * ch, cw * 0.32, 0, Math.PI * 2);
-        g.fill();
-      }
+      // 시작 위치는 매 경기 랜덤이라 미리보기에는 표시하지 않는다
     }
   }
 }
