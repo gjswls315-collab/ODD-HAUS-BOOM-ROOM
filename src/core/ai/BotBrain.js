@@ -6,7 +6,7 @@ import { Rng } from '../rng.js';
 // ─────────────────────────────────────────────────────────────
 // CPU 플레이어 (BOOM ROOM v4) — State Machine + A* + Stuck Recovery
 //
-// 사람과 똑같은 intent(dir/bomb/dash/item)를 만들어 공통 PlayerController 에 넣는다.
+// 사람과 똑같은 intent(dir/bomb/item)를 만들어 공통 PlayerController 에 넣는다.
 // 캐릭터별 AI 분기 없음 — 캐릭터 차이는 Stats(SPEED/BOMB/WAVE) 뿐.
 //
 //   SCAN ─▶ ITEM_SEEK ─▶ ATTACK ─▶ ESCAPE ─▶ POSITIONING ─▶ SCAN
@@ -236,7 +236,7 @@ export class BotBrain {
   // 매 틱 호출 → intent
   update(gm, dt) {
     const p = gm.players.get(this.playerId);
-    const out = { dir: null, bomb: false, dash: false, item: false };
+    const out = { dir: null, bomb: false, item: false };
     if (!p || p.isEliminated) return out;
     this.clock += dt;
     this.stateTime += dt;
@@ -248,7 +248,6 @@ export class BotBrain {
       this.thinkTimer = 0.07 + (1 - this.skill) * 0.14 + this.rng.next() * 0.04;
       const d = this.think(gm, p);
       out.bomb = d.bomb;
-      out.dash = d.dash;
       out.item = d.item;
       if (d.dir !== undefined && !this.path) out.dir = d.dir;
     }
@@ -591,7 +590,7 @@ export class BotBrain {
 
   // ─────────────────────────────────────────────────
   think(gm, p) {
-    const res = { dir: undefined, bomb: false, dash: false, item: false };
+    const res = { dir: undefined, bomb: false, item: false };
     this._fallbackDir = null;
     const { grid } = gm;
     const W = grid.width;
@@ -617,15 +616,12 @@ export class BotBrain {
       this.target = null;
       if (path && path.length > 1) {
         this.path = path;
-        const urgent = danger[here] - this._arrival(p, path.length - 1) < 0.5;
-        if (path.length >= 3 && urgent && p.dash.cooldown <= 0 && this.rng.next() < this.skill) res.dash = true;
         return res;
       }
       // 제때 닿는 안전 칸이 없으면 → 타이밍을 무시하고라도 가장 가까운 안전 칸으로 (멈춰 서지 않는다)
       const gamble = this._safePath(gm, p, danger, { relaxed: true });
       if (gamble && gamble.length > 1) {
         this.path = gamble;
-        if (p.dash.cooldown <= 0) res.dash = true;
         return res;
       }
       // 그래도 없으면 가장 늦게 터지는 / 가장 열린 이웃으로

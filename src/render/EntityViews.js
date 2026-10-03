@@ -105,10 +105,9 @@ export class PlayerView {
     // PlayerIndicator
     this.indicator = group([], { name: 'PlayerIndicator' });
     this.ringMesh = mesh(ring(0.34, 0.42, 40), basic(color, { opacity: 0.9, toneMapped: false }), { r: [-Math.PI / 2, 0, 0], p: [0, 0.015, 0], cast: false });
-    this.dashArc = mesh(ring(0.43, 0.47, 40), basic('#ffffff', { opacity: 0.5, toneMapped: false }), { r: [-Math.PI / 2, 0, 0], p: [0, 0.016, 0], cast: false });
     this.arrow = mesh(new THREE.CircleGeometry(0.09, 3), basic(color, { opacity: 0.95, toneMapped: false }), { r: [-Math.PI / 2, 0, -Math.PI / 2], p: [0, 0.017, 0.52], cast: false });
     this.arrowPivot = group([this.arrow]);
-    this.indicator.add(this.ringMesh, this.dashArc, this.arrowPivot);
+    this.indicator.add(this.ringMesh, this.arrowPivot);
     this.root.add(this.indicator);
     const label = player.isBot ? `CPU` : `${player.slot + 1}P`;
     this.label = new THREE.Sprite(
@@ -226,8 +225,6 @@ export class PlayerView {
       }
       this.timerArc.material.color.set(frac < 0.3 ? '#ff4040' : this.ringMesh.material.color);
     }
-    const dashReady = p.dash.cooldown <= 0;
-    this.dashArc.material.opacity = dashReady ? 0.55 : 0.08;
     this.shield.visible = (p.heldItem?.type === 'shield' || p.invulnerable > 0) && !trapped;
     this.shield.material.opacity = p.invulnerable > 0 ? 0.25 + Math.sin(t * 20) * 0.1 : 0.12;
     if (p.modifiers.speedOverrideTime > 0) this.ringMesh.material.opacity = 0.6 + Math.sin(t * 20) * 0.4;

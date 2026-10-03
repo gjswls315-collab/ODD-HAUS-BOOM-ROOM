@@ -274,9 +274,6 @@ export class App {
         case 'shieldBlock':
           au.sfx('item');
           break;
-        case 'dash':
-          au.sfx('dash');
-          break;
         case 'playerTrapped':
           au.sfx('trap');
           break;

@@ -83,3 +83,18 @@ describe('Bot smoke test — every stage, every character, both modes', () => {
     }
   }
 });
+
+describe('Basic controls are only MOVE / BOMB / ITEM (no default Dash)', () => {
+  it('no dash binding, intent, state or player field', async () => {
+    const { KEY_PROFILES, KEY_LABELS, GAMEPAD_MAP } = await import('../src/config/inputConfig.js');
+    const { PLAYER_STATE } = await import('../src/core/constants.js');
+    const { GAME_CONFIG } = await import('../src/config/gameConfig.js');
+    for (const prof of Object.values(KEY_PROFILES)) expect(Object.keys(prof).sort()).toEqual(['bomb', 'down', 'item', 'left', 'right', 'up']);
+    for (const lab of Object.values(KEY_LABELS)) expect(lab.dash).toBeUndefined();
+    expect(GAMEPAD_MAP.dash).toBeUndefined();
+    expect(PLAYER_STATE.DASH).toBeUndefined();
+    expect(GAME_CONFIG.dash).toBeUndefined();
+    const gm = new GameManager({ mode: 'battle', stageId: 'lounge', players: [{ characterId: 'vin' }, { characterId: 'picker' }], seed: 1, skipCountdown: true });
+    expect(gm.players.get(0).dash).toBeUndefined();
+  });
+});

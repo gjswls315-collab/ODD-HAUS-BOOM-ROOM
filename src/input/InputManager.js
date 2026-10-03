@@ -2,12 +2,12 @@ import { KEY_PROFILES, GLOBAL_KEYS, GAMEPAD_MAP } from '../config/inputConfig.js
 
 // ─────────────────────────────────────────────────────────────
 // InputManager — 키보드 / 게임패드 → intent
-// 모든 플레이어 동일한 액션 세트: 이동 / bomb / dash / item (캐릭터 전용 키 없음)
+// 모든 플레이어 동일한 액션 세트: 이동 / bomb / item (캐릭터 전용 키 없음)
 // 방향은 "가장 최근에 누른 키" 우선 (Crazy Arcade 감각).
-// bomb / dash / item 은 눌린 순간을 래치해 다음 시뮬레이션 틱에서 소비한다.
+// bomb / item 은 눌린 순간을 래치해 다음 시뮬레이션 틱에서 소비한다.
 // ─────────────────────────────────────────────────────────────
 
-const ACTIONS = ['bomb', 'dash', 'item'];
+const ACTIONS = ['bomb', 'item'];
 const DIRS = ['up', 'down', 'left', 'right'];
 
 export class InputManager {
@@ -83,7 +83,7 @@ export class InputManager {
       if (!pad) continue;
       const prev = this.pads.get(pad.index) || { buttons: [] };
       const now = pad.buttons.map((b) => b.pressed);
-      for (const action of ['bomb', 'item', 'dash', 'pause']) {
+      for (const action of ['bomb', 'item', 'pause']) {
         for (const bi of GAMEPAD_MAP[action]) {
           if (now[bi] && !prev.buttons[bi]) this.padLatched.set(`${pad.index}:${action}`, true);
         }
@@ -121,7 +121,7 @@ export class InputManager {
 
   intentFor(playerId) {
     const a = this.assignments.find((x) => x.playerId === playerId);
-    const intent = { dir: null, bomb: false, dash: false, item: false };
+    const intent = { dir: null, bomb: false, item: false };
     if (!a || !this.enabled) return intent;
     const prof = KEY_PROFILES[a.profile];
     if (prof) {

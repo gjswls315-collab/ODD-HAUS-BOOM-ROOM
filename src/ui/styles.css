@@ -1119,17 +1119,11 @@ button {
   background: rgba(255, 113, 54, 0.4);
   border-color: rgba(255, 197, 92, 0.7);
 }
-.acts .dash {
-  right: 104px;
-  bottom: 6px;
-  width: 64px;
-  height: 64px;
-}
 .acts .item {
-  right: 20px;
-  bottom: 106px;
-  width: 64px;
-  height: 64px;
+  right: 106px;
+  bottom: 8px;
+  width: 70px;
+  height: 70px;
 }
 .touch .tpause {
   position: absolute;

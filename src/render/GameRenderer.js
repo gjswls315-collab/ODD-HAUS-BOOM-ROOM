@@ -383,12 +383,6 @@ export class GameRenderer {
           this.fx.sparkle({ x: w.x, y: 0.1, z: w.z }, '#ffb347', 8, { spread: 0.4, up: 1 });
           break;
         }
-        case 'dash': {
-          const p = gm.players.get(e.playerId);
-          const w = this.toWorld(p.x, p.y);
-          this.fx.sparkle({ x: w.x, y: 0.15, z: w.z }, '#e8e0d0', 10, { spread: 0.5, up: 0.6, gravity: 0 });
-          break;
-        }
         case 'turntableRotated':
           this.stageView.rotateDeck(e.x, e.y);
           break;

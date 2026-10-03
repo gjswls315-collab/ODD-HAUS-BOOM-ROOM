@@ -66,7 +66,7 @@ export function run(gm, seconds, intents = {}) {
 }
 
 export function press(gm, playerId, key, dir = null) {
-  gm.step(DT, { [playerId]: { dir, bomb: key === 'bomb', dash: key === 'dash', item: key === 'item' } });
+  gm.step(DT, { [playerId]: { dir, bomb: key === 'bomb', item: key === 'item' } });
 }
 
 export function placeAt(gm, p, x, y) {

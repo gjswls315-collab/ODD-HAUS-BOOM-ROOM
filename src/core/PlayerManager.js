@@ -92,7 +92,6 @@ export class PlayerManager {
   }
 
   trapPlayer(player, byId, source = 'wave') {
-    player.dash.time = 0;
     player.forced = null;
     player.trap = { time: 0, maxTime: this.gm.mode.def.trapTime, byId };
     player.setState(S.TRAPPED);
@@ -132,4 +131,4 @@ export class PlayerManager {
   }
 }
 
-export const EMPTY_INTENT = Object.freeze({ dir: null, bomb: false, dash: false, item: false });
+export const EMPTY_INTENT = Object.freeze({ dir: null, bomb: false, item: false });

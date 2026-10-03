@@ -191,7 +191,6 @@ export class UIManager {
             <div class="ctl">
               <span><span class="key">WASD</span><span class="key">←↑↓→</span></span><span>이동</span>
               <span><span class="key">SPACE</span></span><span>Beat Bomb 설치</span>
-              <span><span class="key">SHIFT</span></span><span>Dash (짧은 회피)</span>
               <span><span class="key">E</span></span><span>특수 아이템 사용</span>
               <span><span class="key">N</span></span><span>미니맵 켜기/끄기 (터치: 타이머 탭)</span>
               <span><span class="key">ESC</span></span><span>Pause</span>
@@ -315,7 +314,7 @@ export class UIManager {
           ${s.type === 'off' ? '<div></div>' : `<img src="${this.portraits[s.characterId] || ''}" alt="">`}
           <div class="who"><span class="tag" style="background:${SLOT_COLORS[i]}">${i + 1}P</span>${teamBadge}<span class="type" data-type>${s.type.toUpperCase()}</span></div>
           <div class="cname">${s.type === 'off' ? '—' : c.name}</div>
-          <div class="keys">${s.type === 'off' ? '참가 안 함' : keys ? `${keys.move} · 폭탄 ${keys.bomb} · 대시 ${keys.dash} · 아이템 ${keys.item}` : `CPU · ${c.tagline}`}</div>
+          <div class="keys">${s.type === 'off' ? '참가 안 함' : keys ? `${keys.move} · 폭탄 ${keys.bomb} · 아이템 ${keys.item}` : `CPU · ${c.tagline}`}</div>
           <div class="state">${s.type === 'off' ? '' : s.ready ? 'READY!' : '선택 중…'}</div>
         </div>`);
         card.querySelector('[data-type]').addEventListener('click', () => cycleType(i));
@@ -403,7 +402,7 @@ export class UIManager {
           s.ready = true;
           this.audio.sfx('confirm');
           render();
-        } else if (act === 'item' || act === 'dash') {
+        } else if (act === 'item') {
           if (s.ready) {
             s.ready = false;
             this.audio.sfx('ui');
@@ -452,7 +451,7 @@ export class UIManager {
       'hud',
       el(`<div class="screen hud passthrough">
         <div class="hud-top"><div class="hud-side left"></div><div class="timer"><b>${fmtTime(gm.timeLeft)}</b><small>${gm.stageDef.name}</small></div><div class="hud-side right"></div></div>
-        ${showControls && gm.players.list.some((p) => !p.isBot) ? `<div class="hud-controls"><span class="key">${hudMoveLabel(gm)}</span>이동 <span class="key">SPACE</span>Beat Bomb <span class="key">SHIFT</span>Dash <span class="key">E</span>Item <span class="key">N</span>Map <span class="key">ESC</span>Pause</div>` : ''}
+        ${showControls && gm.players.list.some((p) => !p.isBot) ? `<div class="hud-controls"><span class="key">${hudMoveLabel(gm)}</span>이동 <span class="key">SPACE</span>Beat Bomb <span class="key">E</span>Item <span class="key">N</span>Map <span class="key">ESC</span>Pause</div>` : ''}
       </div>`),
     );
     const left = node.querySelector('.hud-side.left');
@@ -484,7 +483,6 @@ export class UIManager {
       </div>
       <div class="acts">
         <button data-k="KeyE" class="item">ITEM</button>
-        <button data-k="ShiftLeft" class="dash">DASH</button>
         <button data-k="Space" class="bomb">BOMB</button>
       </div>
       <button data-k="Escape" class="tpause" aria-label="일시정지">II</button>

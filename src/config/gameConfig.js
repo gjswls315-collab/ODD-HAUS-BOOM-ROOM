@@ -44,12 +44,6 @@ export const GAME_CONFIG = {
     popGraceTime: 0.35, // 갇힌 직후 바로 터지지 않는 유예
   },
 
-  dash: {
-    distance: 1.5, // 칸
-    duration: 0.16, // 초
-    cooldown: 2.4, // 모든 캐릭터 공통 (캐릭터 스킬 아님)
-  },
-
   actionAnimTime: 0.24, // PLACE_BOMB / USE_ITEM 연출 상태 유지 시간
 
   match: {

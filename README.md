@@ -20,7 +20,7 @@ npm run build:single   # dist/boom-room-single.html — JS·CSS 를 한 파일�
 
 - **GitHub Pages**: 저장소 Settings → Pages 에서 이 브랜치의 `/ (root)` 를 배포하면 빌드 없이 그대로 실행됩니다 (`index.html` 의 import map 이 three.js 를 CDN 에서 불러옴, `.nojekyll` 포함). 주소: `https://<계정>.github.io/<저장소>/`
 - 타이틀의 **WATCH CPU MATCH** 로 키보드 없이 CPU 4명 경기를 관전할 수 있습니다.
-- 터치 기기(휴대폰·태블릿)에서는 화면에 D-pad / BOMB / DASH / ITEM / 일시정지 버튼이 나타납니다 (P1 과 같은 입력 경로). 휴대폰은 가로 화면을 권장합니다.
+- 터치 기기(휴대폰·태블릿)에서는 화면에 D-pad / BOMB / ITEM / 일시정지 버튼이 나타납니다 (P1 과 같은 입력 경로). 휴대폰은 가로 화면을 권장합니다.
 
 빠른 시작(개발/테스트용 URL 파라미터):
 
@@ -32,13 +32,12 @@ npm run build:single   # dist/boom-room-single.html — JS·CSS 를 한 파일�
 
 `F3` 디버그 오버레이(현재/최대 능력치, 이동속도, GLB 사용 여부) · `M` 음소거 · `N` 미니맵 켜기/끄기 (터치: 타이머 탭)
 
-## 조작 — 모든 캐릭터 동일 (캐릭터 전용 키 없음, Q 키 미사용)
+## 조작 — 모든 캐릭터 동일: 이동 / Beat Bomb / Item 뿐 (대시·캐릭터 전용 키 없음, Q 키 미사용)
 
 | 동작 | 혼자 플레이 | P1 | P2 | P3 | P4 | 게임패드 |
 | --- | --- | --- | --- | --- | --- | --- |
 | 이동 | WASD / 방향키 | WASD | 방향키 | IJKL | NUM 8456 | 스틱 / D-pad |
 | Beat Bomb | SPACE | SPACE | ENTER | U | NUM 7 | A |
-| Dash (짧은 회피) | SHIFT | L-SHIFT | R-SHIFT | Y | NUM 1 | X / RB |
 | 특수 아이템 | E | E | / | O | NUM 9 | B |
 | Pause | ESC | | | | | Start |
 

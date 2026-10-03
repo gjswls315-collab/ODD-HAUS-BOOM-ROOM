@@ -3,7 +3,6 @@
 export const PLAYER_STATE = {
   IDLE: 'IDLE',
   MOVE: 'MOVE',
-  DASH: 'DASH',
   PLACE_BOMB: 'PLACE_BOMB',
   USE_ITEM: 'USE_ITEM',
   TRAPPED: 'TRAPPED',

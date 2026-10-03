@@ -182,7 +182,7 @@ export class CharacterVisual {
 
     if (r.glb) {
       r.mixer.update(dt);
-      const map = { MOVE: 'move', DASH: 'move', PLACE_BOMB: 'place', USE_ITEM: 'place', TRAPPED: 'trapped', VICTORY: 'victory' };
+      const map = { MOVE: 'move', PLACE_BOMB: 'place', USE_ITEM: 'place', TRAPPED: 'trapped', VICTORY: 'victory' };
       this._play(map[state] || 'idle');
     }
 
@@ -223,15 +223,12 @@ export class CharacterVisual {
     };
 
     switch (state) {
-      case 'MOVE':
-      case 'DASH': {
-        const dash = state === 'DASH';
-        this.phase += dt * W.freq * (0.55 + speed * 0.12) * (dash ? 1.6 : 1);
-        legSwing(dash ? 0.3 : 0.7, this.phase);
+      case 'MOVE': {
+        this.phase += dt * W.freq * (0.55 + speed * 0.12);
+        legSwing(0.7, this.phase);
         body.position.y += Math.abs(Math.sin(this.phase)) * W.bob;
-        body.rotation.x = dash ? 0.35 : W.lean;
+        body.rotation.x = W.lean;
         body.rotation.z = Math.sin(this.phase) * W.sway * 0.5;
-        if (dash) body.scale.set(0.9, 0.92, 1.18);
         if (r.cape) r.cape.rotation.x = -0.35 - Math.abs(Math.sin(this.phase)) * 0.15;
         break;
       }
@@ -288,7 +285,7 @@ export class CharacterVisual {
       }
     }
     // Rex 처럼 무게중심이 낮은 캐릭터는 걸을 때도 낮게
-    if ((state === 'MOVE' || state === 'DASH') && this.cfg.idle?.squash) body.scale.y *= this.cfg.idle.squash;
+    if (state === 'MOVE' && this.cfg.idle?.squash) body.scale.y *= this.cfg.idle.squash;
   }
 
   // Beat Bomb 설치 — 판정은 동일, 모션만 캐릭터별

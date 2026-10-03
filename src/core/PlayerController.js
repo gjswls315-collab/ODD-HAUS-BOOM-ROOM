@@ -10,8 +10,9 @@ const S = PLAYER_STATE;
 // 캐릭터별 Controller(VinController 등)는 만들지 않는다.
 // 캐릭터 차이 = CharacterStats(데이터) + CharacterVisual(렌더 레이어) 뿐.
 //
-// intent = { dir: 'up'|'down'|'left'|'right'|null, bomb: bool, dash: bool, item: bool }
-//   (bomb / dash / item 은 이번 틱에 눌렸는지 — edge trigger)
+// intent = { dir: 'up'|'down'|'left'|'right'|null, bomb: bool, item: bool }
+//   (bomb / item 은 이번 틱에 눌렸는지 — edge trigger)
+// 기본 조작은 이동 / Beat Bomb / Item 뿐. 대시 같은 공통 회피기는 없다 — 이동 속도는 SPEED · 아이템이 담당
 // ─────────────────────────────────────────────────────────────
 export class PlayerController {
   constructor({ id, slot, characterId, team = null, isBot = false, spawn, color }) {
@@ -44,7 +45,6 @@ export class PlayerController {
     this.actionTimer = 0;
     this.moving = false;
 
-    this.dash = { time: 0, cooldown: 0, dir: null };
     this.forced = null; // { dx, dy, remaining } 바람 / Rolling LP 등 강제 이동
     this.trap = null; // { time, maxTime, byId }
     this.invulnerable = 0;
@@ -97,7 +97,6 @@ export class PlayerController {
   update(dt, intent, gm) {
     this.stateTime += dt;
     if (this.invulnerable > 0) this.invulnerable = Math.max(0, this.invulnerable - dt);
-    if (this.dash.cooldown > 0) this.dash.cooldown = Math.max(0, this.dash.cooldown - dt);
     if (this.modifiers.speedOverrideTime > 0) {
       this.modifiers.speedOverrideTime -= dt;
       if (this.modifiers.speedOverrideTime <= 0) {
@@ -142,15 +141,6 @@ export class PlayerController {
 
     if (this.state === S.RESCUED && this.stateTime > 0.6) this.setState(S.IDLE);
 
-    // ── Dash (공통 회피 — 캐릭터 스킬 아님) ──
-    if (intent.dash && this.dash.cooldown <= 0 && this.dash.time <= 0) {
-      this.dash.dir = intent.dir || this.facing;
-      this.dash.time = GAME_CONFIG.dash.duration;
-      this.dash.cooldown = GAME_CONFIG.dash.cooldown;
-      this.facing = this.dash.dir;
-      gm.emit('dash', { playerId: this.id, dir: this.dash.dir });
-    }
-
     // ── Beat Bomb 설치 (누른 순간 서 있던 칸에 설치되도록 이동보다 먼저) ──
     if (intent.bomb) {
       if (gm.bombs.tryPlace(this)) {
@@ -169,12 +159,7 @@ export class PlayerController {
     }
 
     let moved = false;
-    if (this.dash.time > 0) {
-      const dashSpeed = GAME_CONFIG.dash.distance / GAME_CONFIG.dash.duration;
-      const dtUse = Math.min(dt, this.dash.time);
-      this.dash.time -= dt;
-      moved = this.moveAlong(this.dash.dir, dashSpeed * dtUse, gm);
-    } else if (intent.dir) {
+    if (intent.dir) {
       this.facing = intent.dir;
       moved = this.moveAlong(intent.dir, this.moveSpeed * dt, gm);
     }
@@ -182,13 +167,12 @@ export class PlayerController {
     this._checkCellChange(gm);
 
     // ── KICK: Bomb 에 몸이 닿은 채로 밀면 진행 방향으로 걷어참 ──
-    if (this.abilities.kick && intent.dir && this.dash.time <= 0) this._tryKick(intent.dir, gm);
+    if (this.abilities.kick && intent.dir) this._tryKick(intent.dir, gm);
 
     // ── 상태 결정 ──
     if (this.actionTimer > 0 && (this.state === S.PLACE_BOMB || this.state === S.USE_ITEM)) return;
     if (this.state === S.RESCUED) return;
-    if (this.dash.time > 0) this.setState(S.DASH);
-    else if (moved) this.setState(S.MOVE);
+    if (moved) this.setState(S.MOVE);
     else this.setState(S.IDLE);
   }
 

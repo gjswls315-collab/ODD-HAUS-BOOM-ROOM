@@ -196,9 +196,6 @@ export class AudioManager {
       case 'rescue':
         [0, 5, 9, 12].forEach((s, i) => this._osc('sine', 660 * Math.pow(2, s / 12), t + i * 0.06, 0.15, 0.18, D));
         break;
-      case 'dash':
-        this._noise(t, 0.14, 0.18, D, { type: 'bandpass', freq: 1200, q: 0.5 });
-        break;
       case 'item':
         this._osc('triangle', 440, t, 0.12, 0.2, D, 1320);
         break;

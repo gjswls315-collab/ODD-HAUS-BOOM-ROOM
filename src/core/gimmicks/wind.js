@@ -53,7 +53,7 @@ export class Wind {
 
     let movedPlayers = 0;
     const players = gm.players.list
-      .filter((p) => !p.isEliminated && !p.forced && p.dash.time <= 0)
+      .filter((p) => !p.isEliminated && !p.forced)
       .sort((a, b) => order({ x: a.cellX, y: a.cellY }, { x: b.cellX, y: b.cellY }));
     for (const p of players) {
       const tx = p.cellX + d.x;
